@@ -73,6 +73,14 @@ local function open_float()
       vim.keymap.set("t", key, key, { buffer = state.buf, nowait = true })
     end
 
+    -- Map <C-c> to <Esc> so it aborts the current Pi run (Pi's normal
+    -- cancel key) without colliding with <Esc> usage elsewhere in Neovim.
+    vim.keymap.set("t", "<C-c>", function()
+      if state.job then
+        vim.api.nvim_chan_send(state.job, "\27")
+      end
+    end, { buffer = state.buf, nowait = true, desc = "Pi: abort current run" })
+
     if M.config.trim_yank then
       vim.api.nvim_create_autocmd("TermLeave", {
         buffer = state.buf,
