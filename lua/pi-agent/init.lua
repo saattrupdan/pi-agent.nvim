@@ -65,6 +65,12 @@ local function open_float()
         state.buf = nil
       end,
     })
+
+    -- Forward control keys Pi relies on (e.g. <C-o> toggles detailed tool
+    -- output) so a global tmap can't swallow them in the agent buffer.
+    for _, key in ipairs({ "<C-o>" }) do
+      vim.keymap.set("t", key, key, { buffer = state.buf, nowait = true })
+    end
   end
 
   vim.cmd("startinsert")
@@ -104,6 +110,23 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("PiAgent", M.toggle, {})
   vim.api.nvim_create_user_command("PiAgentOpen", M.open, {})
   vim.api.nvim_create_user_command("PiAgentClose", M.close, {})
+
+  -- Let `:wqa` / `:qa` exit cleanly even when the agent buffer is still
+  -- alive — otherwise Neovim raises E947 for the running terminal job.
+  vim.api.nvim_create_autocmd("ExitPre", {
+    group = vim.api.nvim_create_augroup("PiAgentExit", { clear = true }),
+    callback = function()
+      if state.job then
+        pcall(vim.fn.jobstop, state.job)
+        state.job = nil
+      end
+      if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+        pcall(vim.api.nvim_buf_delete, state.buf, { force = true })
+      end
+      state.buf = nil
+      state.win = nil
+    end,
+  })
 
   if M.config.keymap and M.config.keymap ~= "" then
     vim.keymap.set("n", M.config.keymap, M.toggle, { desc = "Toggle Pi agent" })
