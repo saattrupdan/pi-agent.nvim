@@ -11,6 +11,7 @@ local defaults = {
   width = 0.7,
   height = 0.7,
   border = "rounded",
+  keymap = "<C-,>",
 }
 
 M.config = vim.deepcopy(defaults)
@@ -103,6 +104,14 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("PiAgent", M.toggle, {})
   vim.api.nvim_create_user_command("PiAgentOpen", M.open, {})
   vim.api.nvim_create_user_command("PiAgentClose", M.close, {})
+
+  if M.config.keymap and M.config.keymap ~= "" then
+    vim.keymap.set("n", M.config.keymap, M.toggle, { desc = "Toggle Pi agent" })
+    vim.keymap.set("t", M.config.keymap, function()
+      vim.cmd("stopinsert")
+      M.toggle()
+    end, { desc = "Toggle Pi agent" })
+  end
 end
 
 return M

@@ -44,12 +44,30 @@ The defaults:
 
 ```lua
 require("pi-agent").setup({
-  command = "pi",     -- command to run in the floating terminal
-  width   = 0.7,      -- fraction of editor width
-  height  = 0.7,      -- fraction of editor height
-  border  = "rounded",-- any value accepted by nvim_open_win
+  command = "pi",      -- command to run in the floating terminal
+  width   = 0.7,       -- fraction of editor width
+  height  = 0.7,       -- fraction of editor height
+  border  = "rounded", -- any value accepted by nvim_open_win
+  keymap  = "<C-,>",   -- toggle keymap (set to false or "" to disable)
 })
 ```
+
+### Changing or disabling the default keymap
+
+By default `<C-,>` toggles the window in both normal and terminal mode. To use a different binding:
+
+```lua
+require("pi-agent").setup({ keymap = "<leader>pi" })
+```
+
+To disable the built-in keymap and define your own:
+
+```lua
+require("pi-agent").setup({ keymap = false })
+vim.keymap.set("n", "<F4>", "<cmd>PiAgent<CR>", { desc = "Toggle Pi agent" })
+```
+
+> Note: some terminals don't transmit `<C-,>` as a distinct key. If pressing it does nothing, pick another binding or configure your terminal to send the right escape sequence (e.g. via Kitty/WezTerm key mappings).
 
 ## Usage
 
@@ -59,12 +77,7 @@ require("pi-agent").setup({
 | `:PiAgentOpen`  | Open (or focus) the floating window      |
 | `:PiAgentClose` | Hide the floating window                 |
 
-Suggested keymaps:
-
-```lua
-vim.keymap.set("n", "<leader>pi", "<cmd>PiAgent<CR>", { desc = "Toggle Pi agent" })
-vim.keymap.set("t", "<C-;>", [[<C-\><C-n><cmd>PiAgent<CR>]], { desc = "Toggle Pi agent" })
-```
+Default keymap: `<C-,>` toggles the window in normal and terminal modes. See [Configuration](#configuration) to change or disable it.
 
 ## How it works
 
