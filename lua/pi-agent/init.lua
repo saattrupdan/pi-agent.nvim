@@ -12,6 +12,7 @@ local defaults = {
   height = 0.7,
   border = "rounded",
   keymap = "<C-,>",
+  trim_yank = true,
 }
 
 M.config = vim.deepcopy(defaults)
@@ -70,6 +71,54 @@ local function open_float()
     -- output) so a global tmap can't swallow them in the agent buffer.
     for _, key in ipairs({ "<C-o>" }) do
       vim.keymap.set("t", key, key, { buffer = state.buf, nowait = true })
+    end
+
+    if M.config.trim_yank then
+      vim.api.nvim_create_autocmd("TextYankPost", {
+        buffer = state.buf,
+        callback = function()
+          local event = vim.v.event
+          if event.operator ~= "y" then
+            return
+          end
+          local lines = vim.deepcopy(event.regcontents or {})
+          if #lines == 0 then
+            return
+          end
+
+          for i, line in ipairs(lines) do
+            lines[i] = line:gsub("%s+$", "")
+          end
+
+          local min_indent = math.huge
+          for _, line in ipairs(lines) do
+            if line ~= "" then
+              min_indent = math.min(min_indent, #line:match("^ *"))
+            end
+          end
+          if min_indent > 0 and min_indent ~= math.huge then
+            for i, line in ipairs(lines) do
+              lines[i] = line:sub(min_indent + 1)
+            end
+          end
+
+          while #lines > 0 and lines[1] == "" do
+            table.remove(lines, 1)
+          end
+          while #lines > 0 and lines[#lines] == "" do
+            table.remove(lines)
+          end
+
+          local regname = event.regname
+          if regname == nil or regname == "" then
+            regname = '"'
+          end
+          vim.fn.setreg(regname, lines, event.regtype)
+          if regname == '"' then
+            vim.fn.setreg("0", lines, event.regtype)
+          end
+        end,
+      })
     end
   end
 

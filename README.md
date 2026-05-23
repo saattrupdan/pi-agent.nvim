@@ -49,6 +49,7 @@ require("pi-agent").setup({
   height  = 0.7,       -- fraction of editor height
   border  = "rounded", -- any value accepted by nvim_open_win
   keymap  = "<C-,>",   -- toggle keymap (set to false or "" to disable)
+  trim_yank = true,    -- strip terminal padding from yanks in the agent buffer
 })
 ```
 
@@ -80,6 +81,10 @@ vim.keymap.set("n", "<F4>", "<cmd>PiAgent<CR>", { desc = "Toggle Pi agent" })
 | `:PiAgentClose` | Hide the floating window                 |
 
 Default keymap: `<C-,>` toggles the window in normal and terminal modes. See [Configuration](#configuration) to change or disable it.
+
+### Copying chat text
+
+Terminal buffers pad every visible line with trailing spaces, and Pi's TUI indents messages with extra leading whitespace, so a naive yank pastes a wall of padding. With `trim_yank = true` (default), any yank inside the agent buffer is post-processed: trailing whitespace is stripped from each line, the common leading indent is removed, and surrounding blank lines are dropped. The usual flow — `<C-\><C-n>`, move up, `V` to select lines, `y` — produces clean text ready to paste elsewhere. Set `trim_yank = false` to opt out.
 
 ## How it works
 
