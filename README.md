@@ -54,11 +54,13 @@ require("pi-agent").setup({
 
 ### Changing or disabling the default keymap
 
-By default `<C-,>` toggles the window in both normal and terminal mode. To use a different binding:
+By default `<C-,>` toggles the window in both normal and terminal mode. To use a different binding, e.g. `<leader>pi`:
 
 ```lua
 require("pi-agent").setup({ keymap = "<leader>pi" })
 ```
+
+Any string accepted by `vim.keymap.set` works here — for example `"<leader>p"`, `"<F4>"`, or `"<C-g>p"`.
 
 To disable the built-in keymap and define your own:
 
