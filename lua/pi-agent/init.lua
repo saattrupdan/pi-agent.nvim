@@ -12,6 +12,7 @@ local defaults = {
   height = 0.7,
   border = "rounded",
   keymap = "<C-,>",
+  abort_keymap = "<C-c>",
   trim_yank = true,
 }
 
@@ -73,13 +74,16 @@ local function open_float()
       vim.keymap.set("t", key, key, { buffer = state.buf, nowait = true })
     end
 
-    -- Map <C-c> to <Esc> so it aborts the current Pi run (Pi's normal
-    -- cancel key) without colliding with <Esc> usage elsewhere in Neovim.
-    vim.keymap.set("t", "<C-c>", function()
-      if state.job then
-        vim.api.nvim_chan_send(state.job, "\27")
-      end
-    end, { buffer = state.buf, nowait = true, desc = "Pi: abort current run" })
+    -- Map a configurable key to <Esc> so it aborts the current Pi run
+    -- (Pi's normal cancel key) without colliding with <Esc> usage elsewhere
+    -- in Neovim.
+    if M.config.abort_keymap and M.config.abort_keymap ~= "" then
+      vim.keymap.set("t", M.config.abort_keymap, function()
+        if state.job then
+          vim.api.nvim_chan_send(state.job, "\27")
+        end
+      end, { buffer = state.buf, nowait = true, desc = "Pi: abort current run" })
+    end
 
     if M.config.trim_yank then
       vim.api.nvim_create_autocmd("TermLeave", {

@@ -49,6 +49,7 @@ require("pi-agent").setup({
   height  = 0.7,       -- fraction of editor height
   border  = "rounded", -- any value accepted by nvim_open_win
   keymap  = "<C-,>",   -- toggle keymap (set to false or "" to disable)
+  abort_keymap = "<C-c>", -- terminal-mode keymap that aborts the current Pi run (set to false or "" to disable)
   trim_yank = true,    -- strip terminal padding from yanks in the agent buffer
 })
 ```
@@ -84,7 +85,7 @@ Default keymap: `<C-,>` toggles the window in normal and terminal modes. See [Co
 
 ### Aborting a Pi run
 
-Pi normally cancels the current generation with `<Esc>`, but `<Esc>` is overloaded in Neovim (leaving terminal mode, dismissing popups, etc.). Inside the agent buffer, `<C-c>` is mapped to send `<Esc>` to Pi so you can abort a run without leaving terminal mode.
+Pi normally cancels the current generation with `<Esc>`, but `<Esc>` is overloaded in Neovim (leaving terminal mode, dismissing popups, etc.). Inside the agent buffer, `<C-c>` is mapped to send `<Esc>` to Pi so you can abort a run without leaving terminal mode. Change it via `abort_keymap`, or set it to `false` / `""` to disable.
 
 ### Copying chat text
 
