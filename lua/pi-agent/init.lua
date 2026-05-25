@@ -85,6 +85,12 @@ local function open_float()
       end, { buffer = state.buf, nowait = true, desc = "Pi: abort current run" })
     end
 
+    -- Press <CR> in terminal mode to return to insert mode (after using vim
+    -- commands in normal mode)
+    vim.keymap.set("t", "<CR>", function()
+      vim.cmd("startinsert")
+    end, { buffer = state.buf, nowait = true, desc = "Pi: switch to insert mode" })
+
     if M.config.trim_yank then
       vim.api.nvim_create_autocmd("TermLeave", {
         buffer = state.buf,
@@ -125,22 +131,38 @@ local function open_float()
             return
           end
 
-          for i, line in ipairs(lines) do
-            lines[i] = line:gsub("%s+$", "")
+          -- Helper: is this line purely border/prompt characters?
+          local function is_border(line)
+            local s = line:gsub("%s+", "")
+            if s == "" then return true end
+            -- Box-drawing Unicode + ASCII borders + prompt char
+            if s:match("^[┌┬┐└┴┘├┤┬┼┐└┌┘┤├┬┴┼│─╔╗╝╚╠╣╦╩╩╬▀▄█▌▐░▒▓■□▢▣▤▥▦▧▨▩▪▫▬▭▮▯♦♣♠♥]+$") then
+              return true
+            end
+            if s:match("^[+=%|-]+$") then
+              return true
+            end
+            if s:match("^>$") then
+              return true
+            end
+            return false
           end
 
-          local min_indent = math.huge
+          -- Filter out border/prompt lines
+          local filtered = {}
           for _, line in ipairs(lines) do
-            if line ~= "" then
-              min_indent = math.min(min_indent, #line:match("^ *"))
+            if not is_border(line) then
+              table.insert(filtered, line)
             end
           end
-          if min_indent > 0 and min_indent ~= math.huge then
-            for i, line in ipairs(lines) do
-              lines[i] = line:sub(min_indent + 1)
-            end
+          lines = filtered
+
+          -- Strip all leading whitespace per line
+          for i, line in ipairs(lines) do
+            lines[i] = line:gsub("^%s+", "")
           end
 
+          -- Pop leading/trailing blank lines
           while #lines > 0 and lines[1] == "" do
             table.remove(lines, 1)
           end
@@ -160,8 +182,6 @@ local function open_float()
       })
     end
   end
-
-  vim.cmd("startinsert")
 end
 
 function M.is_open()
@@ -171,7 +191,6 @@ end
 function M.open()
   if M.is_open() then
     vim.api.nvim_set_current_win(state.win)
-    vim.cmd("startinsert")
     return
   end
   open_float()
