@@ -85,12 +85,6 @@ local function open_float()
       end, { buffer = state.buf, nowait = true, desc = "Pi: abort current run" })
     end
 
-    -- Press <CR> in terminal mode to return to insert mode (after using vim
-    -- commands in normal mode)
-    vim.keymap.set("t", "<CR>", function()
-      vim.cmd("startinsert")
-    end, { buffer = state.buf, nowait = true, desc = "Pi: switch to insert mode" })
-
     if M.config.trim_yank then
       vim.api.nvim_create_autocmd("TermLeave", {
         buffer = state.buf,
