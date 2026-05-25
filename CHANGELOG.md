@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `trim_yank` now strips all leading whitespace per line (instead of common
+  indent) and detects/skips splash screen border lines (box-drawing Unicode,
+  ASCII borders, `>` prompt) from yanked content.
+- Terminal buffer no longer forces insert mode on open — vim commands work
+  immediately. Press `<CR>` in terminal mode to return to insert mode.
+
 ## [0.1.0] - 2026-05-23
 
 ### Added
