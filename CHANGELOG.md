@@ -12,10 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `trim_yank` now strips all leading whitespace per line (instead of common
   indent) and detects/skips splash screen border lines (box-drawing Unicode,
   ASCII borders, `>` prompt) from yanked content.
-- Buffer and yank cleanup now also strip the box-vertical `│` (and `|`) plus
-  any surrounding whitespace from each line edge, so splash screen input-box
-  borders disappear from both the displayed buffer and yanked text. Buffer
-  cleanup also runs on `ModeChanged` for more reliable normal-mode display.
 - Terminal buffer no longer forces insert mode on open — vim commands work
   immediately. Press `<CR>` in terminal mode to return to insert mode.
 
