@@ -13,7 +13,6 @@ local defaults = {
   border = "rounded",
   keymap = "<C-,>",
   abort_keymap = "<C-c>",
-  trim_yank = true,
 }
 
 M.config = vim.deepcopy(defaults)
@@ -29,23 +28,6 @@ end
 local function resolve_cwd()
   local cwd = vim.fn.getcwd()
   return git_root(cwd) or cwd
-end
-
--- Helper: is this line purely border/prompt characters?
-local function is_border(line)
-  local s = line:gsub("%s+", "")
-  if s == "" then return true end
-  -- Box-drawing Unicode + ASCII borders + prompt char
-  if s:match("^[┌┬┐└┴┘├┤┬┼┐└┌┘┤├┬┴┼│─╔╗╝╚╠╣╦╩╩╬▀▄█▌▐░▒▓■□▢▣▤▥▦▧▨▩▪▫▬▭▮▯♦♣♠♥]+$") then
-    return true
-  end
-  if s:match("^[+=%|-]+$") then
-    return true
-  end
-  if s:match("^>$") then
-    return true
-  end
-  return false
 end
 
 local function open_float()
@@ -102,79 +84,6 @@ local function open_float()
       end, { buffer = state.buf, nowait = true, desc = "Pi: abort current run" })
     end
 
-    if M.config.trim_yank then
-      vim.api.nvim_create_autocmd("TermLeave", {
-        buffer = state.buf,
-        callback = function()
-          if not vim.api.nvim_buf_is_valid(state.buf) then
-            return
-          end
-          local was_modifiable = vim.bo[state.buf].modifiable
-          vim.bo[state.buf].modifiable = true
-          local ok, lines = pcall(vim.api.nvim_buf_get_lines, state.buf, 0, -1, false)
-          if ok then
-            local changed = false
-            for i, line in ipairs(lines) do
-              local trimmed = line:gsub("%s+$", "")
-              if trimmed ~= line then
-                lines[i] = trimmed
-                changed = true
-              end
-            end
-            if changed then
-              pcall(vim.api.nvim_buf_set_lines, state.buf, 0, -1, false, lines)
-              vim.bo[state.buf].modified = false
-            end
-          end
-          vim.bo[state.buf].modifiable = was_modifiable
-        end,
-      })
-
-      vim.api.nvim_create_autocmd("TextYankPost", {
-        buffer = state.buf,
-        callback = function()
-          local event = vim.v.event
-          if event.operator ~= "y" then
-            return
-          end
-          local lines = vim.deepcopy(event.regcontents or {})
-          if #lines == 0 then
-            return
-          end
-
-          -- Filter out border/prompt lines
-          local filtered = {}
-          for _, line in ipairs(lines) do
-            if not is_border(line) then
-              table.insert(filtered, line)
-            end
-          end
-          lines = filtered
-
-          -- Strip all leading whitespace per line
-          for i, line in ipairs(lines) do
-            lines[i] = line:gsub("^%s+", "")
-          end
-
-          -- Pop leading/trailing blank lines
-          while #lines > 0 and lines[1] == "" do
-            table.remove(lines, 1)
-          end
-          while #lines > 0 and lines[#lines] == "" do
-            table.remove(lines)
-          end
-
-          local regname = event.regname
-          if regname == nil or regname == "" then
-            regname = '"'
-          end
-          vim.fn.setreg(regname, lines, event.regtype)
-          if regname == '"' then
-            vim.fn.setreg("0", lines, event.regtype)
-          end
-        end,
-      })
-    end
   end
 end
 

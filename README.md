@@ -50,7 +50,6 @@ require("pi-agent").setup({
   border  = "rounded", -- any value accepted by nvim_open_win
   keymap  = "<C-,>",   -- toggle keymap (set to false or "" to disable)
   abort_keymap = "<C-c>", -- terminal-mode keymap that aborts the current Pi run (set to false or "" to disable)
-  trim_yank = true,    -- strip terminal padding from yanks in the agent buffer
 })
 ```
 
@@ -86,10 +85,6 @@ Default keymap: `<C-,>` toggles the window in normal and terminal modes. See [Co
 ### Aborting a Pi run
 
 Pi normally cancels the current generation with `<Esc>`, but `<Esc>` is overloaded in Neovim (leaving terminal mode, dismissing popups, etc.). Inside the agent buffer, `<C-c>` is mapped to send `<Esc>` to Pi so you can abort a run without leaving terminal mode. Change it via `abort_keymap`, or set it to `false` / `""` to disable.
-
-### Copying chat text
-
-Terminal buffers pad every visible line with trailing spaces, and Pi's TUI indents messages with extra leading whitespace, so a naive yank pastes a wall of padding. With `trim_yank = true` (default), any yank inside the agent buffer is post-processed: trailing whitespace is stripped from each line, the common leading indent is removed, and surrounding blank lines are dropped. The usual flow — `<C-\><C-n>`, move up, `V` to select lines, `y` — produces clean text ready to paste elsewhere. Set `trim_yank = false` to opt out.
 
 ## How it works
 
