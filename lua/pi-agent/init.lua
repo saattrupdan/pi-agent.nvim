@@ -48,6 +48,40 @@ local function is_border(line)
   return false
 end
 
+-- Strip leading/trailing whitespace and box-vertical chars (│ and |) plus
+-- any whitespace they wrap. Applied repeatedly so a line like
+-- "  │ > hello │  " collapses to "> hello".
+local function strip_edges(line)
+  local prev
+  repeat
+    prev = line
+    line = line:gsub("^%s+", ""):gsub("%s+$", "")
+    line = line:gsub("^│%s*", ""):gsub("%s*│$", "")
+    line = line:gsub("^|%s*", ""):gsub("%s*|$", "")
+  until line == prev
+  return line
+end
+
+-- Clean a list of lines: drop border-only lines and strip edge whitespace
+-- and border-vertical characters from each remaining line. Returns the
+-- cleaned list and whether anything changed relative to the input.
+local function clean_lines(lines)
+  local out = {}
+  local changed = false
+  for _, line in ipairs(lines) do
+    local stripped = strip_edges(line)
+    if is_border(stripped) then
+      changed = true
+    else
+      table.insert(out, stripped)
+      if stripped ~= line then
+        changed = true
+      end
+    end
+  end
+  return out, changed
+end
+
 local function open_float()
   local width = math.floor(vim.o.columns * M.config.width)
   local height = math.floor(vim.o.lines * M.config.height)
@@ -103,74 +137,26 @@ local function open_float()
     end
 
     if M.config.trim_yank then
-      vim.api.nvim_create_autocmd("TermLeave", {
-        buffer = state.buf,
-        callback = function()
-          if not vim.api.nvim_buf_is_valid(state.buf) then
-            return
+      local function trim_buffer()
+        if not vim.api.nvim_buf_is_valid(state.buf) then
+          return
+        end
+        local was_modifiable = vim.bo[state.buf].modifiable
+        vim.bo[state.buf].modifiable = true
+        local ok, lines = pcall(vim.api.nvim_buf_get_lines, state.buf, 0, -1, false)
+        if ok then
+          local cleaned, changed = clean_lines(lines)
+          if changed then
+            pcall(vim.api.nvim_buf_set_lines, state.buf, 0, -1, false, cleaned)
+            vim.bo[state.buf].modified = false
           end
-          local was_modifiable = vim.bo[state.buf].modifiable
-          vim.bo[state.buf].modifiable = true
-          local ok, lines = pcall(vim.api.nvim_buf_get_lines, state.buf, 0, -1, false)
-          if ok then
-            local changed = false
-            local filtered = {}
-            for _, line in ipairs(lines) do
-              -- Strip leading whitespace
-              local stripped = line:gsub("^%s+", "")
-              -- Strip trailing whitespace and skip border/prompt lines
-              local trimmed = stripped:gsub("%s+$", "")
-              if not is_border(trimmed) then
-                table.insert(filtered, trimmed)
-                if trimmed ~= line then
-                  changed = true
-                end
-              else
-                changed = true
-              end
-            end
-            if changed then
-              pcall(vim.api.nvim_buf_set_lines, state.buf, 0, -1, false, filtered)
-              vim.bo[state.buf].modified = false
-            end
-          end
-          vim.bo[state.buf].modifiable = was_modifiable
-        end,
-      })
+        end
+        vim.bo[state.buf].modifiable = was_modifiable
+      end
 
-      vim.api.nvim_create_autocmd("BufEnter", {
+      vim.api.nvim_create_autocmd({ "TermLeave", "BufEnter", "ModeChanged" }, {
         buffer = state.buf,
-        callback = function()
-          if not vim.api.nvim_buf_is_valid(state.buf) then
-            return
-          end
-          local was_modifiable = vim.bo[state.buf].modifiable
-          vim.bo[state.buf].modifiable = true
-          local ok, lines = pcall(vim.api.nvim_buf_get_lines, state.buf, 0, -1, false)
-          if ok then
-            local changed = false
-            local filtered = {}
-            for _, line in ipairs(lines) do
-              -- Strip leading whitespace
-              local stripped = line:gsub("^%s+", "")
-              -- Strip trailing whitespace and skip border/prompt lines
-              local trimmed = stripped:gsub("%s+$", "")
-              if not is_border(trimmed) then
-                table.insert(filtered, trimmed)
-                if trimmed ~= line then
-                  changed = true
-                end
-              else
-                changed = true
-              end
-            end
-            if changed then
-              pcall(vim.api.nvim_buf_set_lines, state.buf, 0, -1, false, filtered)
-              vim.bo[state.buf].modified = false
-            end
-          end
-          vim.bo[state.buf].modifiable = was_modifiable
-        end,
+        callback = trim_buffer,
       })
 
       vim.api.nvim_create_autocmd("TextYankPost", {
@@ -185,35 +171,22 @@ local function open_float()
             return
           end
 
-          -- Filter out border/prompt lines
-          local filtered = {}
-          for _, line in ipairs(lines) do
-            if not is_border(line) then
-              table.insert(filtered, line)
-            end
-          end
-          lines = filtered
+          local cleaned = clean_lines(lines)
 
-          -- Strip all leading whitespace per line
-          for i, line in ipairs(lines) do
-            lines[i] = line:gsub("^%s+", "")
+          while #cleaned > 0 and cleaned[1] == "" do
+            table.remove(cleaned, 1)
           end
-
-          -- Pop leading/trailing blank lines
-          while #lines > 0 and lines[1] == "" do
-            table.remove(lines, 1)
-          end
-          while #lines > 0 and lines[#lines] == "" do
-            table.remove(lines)
+          while #cleaned > 0 and cleaned[#cleaned] == "" do
+            table.remove(cleaned)
           end
 
           local regname = event.regname
           if regname == nil or regname == "" then
             regname = '"'
           end
-          vim.fn.setreg(regname, lines, event.regtype)
+          vim.fn.setreg(regname, cleaned, event.regtype)
           if regname == '"' then
-            vim.fn.setreg("0", lines, event.regtype)
+            vim.fn.setreg("0", cleaned, event.regtype)
           end
         end,
       })
