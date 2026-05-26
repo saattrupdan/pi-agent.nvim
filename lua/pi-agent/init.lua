@@ -84,6 +84,51 @@ local function open_float()
       end, { buffer = state.buf, nowait = true, desc = "Pi: abort current run" })
     end
 
+    -- Post-process yanks from the agent buffer so the register holds just
+    -- the message text — no terminal padding, no box-drawing borders, no
+    -- surrounding blank lines. The on-screen visual highlight is
+    -- unaffected (we never modify the buffer); only what `p` pastes
+    -- changes. Vim regex is used because Lua patterns' `[...]` class is
+    -- byte-based and breaks on multi-byte UTF-8 box-drawing characters.
+    local edge_pattern = [[\v^[ 	|│┃║╽╿▏▕╎╏┆┇┊┋>]+|[ 	|│┃║╽╿▏▕╎╏┆┇┊┋]+$]]
+    local border_pattern = [[\v^[ 	|│┃║╽╿▏▕╎╏┆┇┊┋─━═┄┅┈┉┌┐└┘├┤┬┴┼╔╗╚╝╠╣╦╩╬>+=\-]*$]]
+    vim.api.nvim_create_autocmd("TextYankPost", {
+      buffer = state.buf,
+      callback = function()
+        local event = vim.v.event
+        if event.operator ~= "y" then
+          return
+        end
+        local lines = vim.deepcopy(event.regcontents or {})
+        if #lines == 0 then
+          return
+        end
+
+        local cleaned = {}
+        for _, line in ipairs(lines) do
+          local stripped = vim.fn.substitute(line, edge_pattern, "", "g")
+          if vim.fn.match(stripped, border_pattern) < 0 then
+            table.insert(cleaned, stripped)
+          end
+        end
+
+        while #cleaned > 0 and cleaned[1] == "" do
+          table.remove(cleaned, 1)
+        end
+        while #cleaned > 0 and cleaned[#cleaned] == "" do
+          table.remove(cleaned)
+        end
+
+        local regname = event.regname
+        if regname == nil or regname == "" then
+          regname = '"'
+        end
+        vim.fn.setreg(regname, cleaned, event.regtype)
+        if regname == '"' then
+          vim.fn.setreg("0", cleaned, event.regtype)
+        end
+      end,
+    })
   end
 end
 

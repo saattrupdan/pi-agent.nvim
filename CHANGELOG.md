@@ -7,12 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
+### Added
 
-- `trim_yank` option and all whitespace/border stripping for yanks and the
-  terminal buffer. Repeated attempts to clean Pi's TUI either mangled the
-  splash screen or left edge artifacts in yanks, so the feature is gone and
-  yanks now return raw buffer contents.
+- Yanks from the agent buffer are post-processed via `TextYankPost`: each
+  line has terminal padding, box-drawing vertical glyphs (`│ ┃ ║ ╽ ╿ ▏ ▕ ╎
+  ╏ ┆ ┇ ┊ ┋ |`), and the input-box `>` prompt stripped from its edges;
+  border-only lines (`┌─┐`, `└─┘`, etc.) are dropped; leading and trailing
+  blank lines are removed. The on-screen visual highlight is unchanged —
+  only the register contents are cleaned, so the UI is never touched.
 
 ### Changed
 
