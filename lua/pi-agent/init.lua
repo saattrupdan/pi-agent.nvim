@@ -139,9 +139,10 @@ end
 function M.open()
   if M.is_open() then
     vim.api.nvim_set_current_win(state.win)
-    return
+  else
+    open_float()
   end
-  open_float()
+  vim.cmd("startinsert")
 end
 
 function M.close()
