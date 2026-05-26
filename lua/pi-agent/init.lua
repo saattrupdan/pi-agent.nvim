@@ -31,6 +31,23 @@ local function resolve_cwd()
   return git_root(cwd) or cwd
 end
 
+-- Helper: is this line purely border/prompt characters?
+local function is_border(line)
+  local s = line:gsub("%s+", "")
+  if s == "" then return true end
+  -- Box-drawing Unicode + ASCII borders + prompt char
+  if s:match("^[┌┬┐└┴┘├┤┬┼┐└┌┘┤├┬┴┼│─╔╗╝╚╠╣╦╩╩╬▀▄█▌▐░▒▓■□▢▣▤▥▦▧▨▩▪▫▬▭▮▯♦♣♠♥]+$") then
+    return true
+  end
+  if s:match("^[+=%|-]+$") then
+    return true
+  end
+  if s:match("^>$") then
+    return true
+  end
+  return false
+end
+
 local function open_float()
   local width = math.floor(vim.o.columns * M.config.width)
   local height = math.floor(vim.o.lines * M.config.height)
@@ -97,15 +114,58 @@ local function open_float()
           local ok, lines = pcall(vim.api.nvim_buf_get_lines, state.buf, 0, -1, false)
           if ok then
             local changed = false
-            for i, line in ipairs(lines) do
-              local trimmed = line:gsub("%s+$", "")
-              if trimmed ~= line then
-                lines[i] = trimmed
+            local filtered = {}
+            for _, line in ipairs(lines) do
+              -- Strip leading whitespace
+              local stripped = line:gsub("^%s+", "")
+              -- Strip trailing whitespace and skip border/prompt lines
+              local trimmed = stripped:gsub("%s+$", "")
+              if not is_border(trimmed) then
+                table.insert(filtered, trimmed)
+                if trimmed ~= line then
+                  changed = true
+                end
+              else
                 changed = true
               end
             end
             if changed then
-              pcall(vim.api.nvim_buf_set_lines, state.buf, 0, -1, false, lines)
+              pcall(vim.api.nvim_buf_set_lines, state.buf, 0, -1, false, filtered)
+              vim.bo[state.buf].modified = false
+            end
+          end
+          vim.bo[state.buf].modifiable = was_modifiable
+        end,
+      })
+
+      vim.api.nvim_create_autocmd("BufEnter", {
+        buffer = state.buf,
+        callback = function()
+          if not vim.api.nvim_buf_is_valid(state.buf) then
+            return
+          end
+          local was_modifiable = vim.bo[state.buf].modifiable
+          vim.bo[state.buf].modifiable = true
+          local ok, lines = pcall(vim.api.nvim_buf_get_lines, state.buf, 0, -1, false)
+          if ok then
+            local changed = false
+            local filtered = {}
+            for _, line in ipairs(lines) do
+              -- Strip leading whitespace
+              local stripped = line:gsub("^%s+", "")
+              -- Strip trailing whitespace and skip border/prompt lines
+              local trimmed = stripped:gsub("%s+$", "")
+              if not is_border(trimmed) then
+                table.insert(filtered, trimmed)
+                if trimmed ~= line then
+                  changed = true
+                end
+              else
+                changed = true
+              end
+            end
+            if changed then
+              pcall(vim.api.nvim_buf_set_lines, state.buf, 0, -1, false, filtered)
               vim.bo[state.buf].modified = false
             end
           end
@@ -123,23 +183,6 @@ local function open_float()
           local lines = vim.deepcopy(event.regcontents or {})
           if #lines == 0 then
             return
-          end
-
-          -- Helper: is this line purely border/prompt characters?
-          local function is_border(line)
-            local s = line:gsub("%s+", "")
-            if s == "" then return true end
-            -- Box-drawing Unicode + ASCII borders + prompt char
-            if s:match("^[┌┬┐└┴┘├┤┬┼┐└┌┘┤├┬┴┼│─╔╗╝╚╠╣╦╩╩╬▀▄█▌▐░▒▓■□▢▣▤▥▦▧▨▩▪▫▬▭▮▯♦♣♠♥]+$") then
-              return true
-            end
-            if s:match("^[+=%|-]+$") then
-              return true
-            end
-            if s:match("^>$") then
-              return true
-            end
-            return false
           end
 
           -- Filter out border/prompt lines
