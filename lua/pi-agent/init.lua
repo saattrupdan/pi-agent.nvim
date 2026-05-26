@@ -114,58 +114,15 @@ local function open_float()
           local ok, lines = pcall(vim.api.nvim_buf_get_lines, state.buf, 0, -1, false)
           if ok then
             local changed = false
-            local filtered = {}
-            for _, line in ipairs(lines) do
-              -- Strip leading whitespace
-              local stripped = line:gsub("^%s+", "")
-              -- Strip trailing whitespace and skip border/prompt lines
-              local trimmed = stripped:gsub("%s+$", "")
-              if not is_border(trimmed) then
-                table.insert(filtered, trimmed)
-                if trimmed ~= line then
-                  changed = true
-                end
-              else
+            for i, line in ipairs(lines) do
+              local trimmed = line:gsub("%s+$", "")
+              if trimmed ~= line then
+                lines[i] = trimmed
                 changed = true
               end
             end
             if changed then
-              pcall(vim.api.nvim_buf_set_lines, state.buf, 0, -1, false, filtered)
-              vim.bo[state.buf].modified = false
-            end
-          end
-          vim.bo[state.buf].modifiable = was_modifiable
-        end,
-      })
-
-      vim.api.nvim_create_autocmd("BufEnter", {
-        buffer = state.buf,
-        callback = function()
-          if not vim.api.nvim_buf_is_valid(state.buf) then
-            return
-          end
-          local was_modifiable = vim.bo[state.buf].modifiable
-          vim.bo[state.buf].modifiable = true
-          local ok, lines = pcall(vim.api.nvim_buf_get_lines, state.buf, 0, -1, false)
-          if ok then
-            local changed = false
-            local filtered = {}
-            for _, line in ipairs(lines) do
-              -- Strip leading whitespace
-              local stripped = line:gsub("^%s+", "")
-              -- Strip trailing whitespace and skip border/prompt lines
-              local trimmed = stripped:gsub("%s+$", "")
-              if not is_border(trimmed) then
-                table.insert(filtered, trimmed)
-                if trimmed ~= line then
-                  changed = true
-                end
-              else
-                changed = true
-              end
-            end
-            if changed then
-              pcall(vim.api.nvim_buf_set_lines, state.buf, 0, -1, false, filtered)
+              pcall(vim.api.nvim_buf_set_lines, state.buf, 0, -1, false, lines)
               vim.bo[state.buf].modified = false
             end
           end
