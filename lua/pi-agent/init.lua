@@ -73,6 +73,13 @@ local function open_float()
       vim.keymap.set("t", key, key, { buffer = state.buf, nowait = true })
     end
 
+    -- Terminal lines are padded with trailing spaces to the window width,
+    -- so linewise visual would highlight all that padding. Remap V to a
+    -- charwise select from column 0 to the last non-blank, and remap $ in
+    -- visual mode to g_ so extending a selection also stops at text.
+    vim.keymap.set("n", "V", "0vg_", { buffer = state.buf, nowait = true })
+    vim.keymap.set("x", "$", "g_", { buffer = state.buf, nowait = true })
+
     -- Map a configurable key to <Esc> so it aborts the current Pi run
     -- (Pi's normal cancel key) without colliding with <Esc> usage elsewhere
     -- in Neovim.
