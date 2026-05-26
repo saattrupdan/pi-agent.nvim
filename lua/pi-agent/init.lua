@@ -48,17 +48,18 @@ local function is_border(line)
   return false
 end
 
--- Strip leading/trailing whitespace and box-vertical chars (the various
--- Unicode line/double/heavy/dotted vertical glyphs plus ASCII `|`) along
--- with any whitespace they wrap, so a line like
+-- Strip leading/trailing whitespace and box-vertical chars (│ and |) plus
+-- any whitespace they wrap. Applied repeatedly so a line like
 -- "  │ > hello │  " collapses to "> hello".
---
--- Uses Vim's regex (rather than Lua patterns) because Vim's `[…]` class is
--- codepoint-aware — Lua's `[…]` operates on raw bytes, which breaks on
--- multi-byte UTF-8 box-drawing characters.
-local edge_pattern = [[\v^[ 	|│┃║╽╿▏▕╎╏┆┇┊┋]+|[ 	|│┃║╽╿▏▕╎╏┆┇┊┋]+$]]
 local function strip_edges(line)
-  return vim.fn.substitute(line, edge_pattern, "", "g")
+  local prev
+  repeat
+    prev = line
+    line = line:gsub("^%s+", ""):gsub("%s+$", "")
+    line = line:gsub("^│%s*", ""):gsub("%s*│$", "")
+    line = line:gsub("^|%s*", ""):gsub("%s*|$", "")
+  until line == prev
+  return line
 end
 
 -- Clean a list of lines: drop border-only lines and strip edge whitespace
