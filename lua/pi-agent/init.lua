@@ -4,6 +4,7 @@ local state = {
   buf = nil,
   win = nil,
   job = nil,
+  view = nil,
 }
 
 local defaults = {
@@ -28,6 +29,44 @@ end
 local function resolve_cwd()
   local cwd = vim.fn.getcwd()
   return git_root(cwd) or cwd
+end
+
+local function in_terminal_mode()
+  return vim.api.nvim_get_mode().mode:sub(1, 1) == "t"
+end
+
+local function agent_window_active()
+  return M.is_open() and vim.api.nvim_win_get_buf(state.win) == state.buf
+end
+
+local function remember_view_if_browsing()
+  if not agent_window_active() then
+    state.view = nil
+    return
+  end
+  if in_terminal_mode() then
+    state.view = nil
+    return
+  end
+
+  vim.api.nvim_win_call(state.win, function()
+    if vim.fn.line("w$") >= vim.fn.line("$") then
+      state.view = nil
+    else
+      state.view = vim.fn.winsaveview()
+    end
+  end)
+end
+
+local function restore_browsing_view()
+  if not state.view or not agent_window_active() or in_terminal_mode() then
+    return
+  end
+
+  local view = vim.deepcopy(state.view)
+  vim.api.nvim_win_call(state.win, function()
+    vim.fn.winrestview(view)
+  end)
 end
 
 local function open_float()
@@ -60,12 +99,15 @@ local function open_float()
       cwd = cwd,
       on_exit = function()
         state.job = nil
+        state.view = nil
         if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
           vim.api.nvim_buf_delete(state.buf, { force = true })
         end
         state.buf = nil
       end,
     })
+
+    local buffer_group = vim.api.nvim_create_augroup("PiAgentBuffer", { clear = true })
 
     -- Forward control keys Pi relies on (e.g. <C-o> toggles detailed tool
     -- output) so a global tmap can't swallow them in the agent buffer.
@@ -91,6 +133,38 @@ local function open_float()
       end, { buffer = state.buf, nowait = true, desc = "Pi: abort current run" })
     end
 
+    vim.api.nvim_buf_attach(state.buf, false, {
+      on_lines = function()
+        if state.view then
+          vim.schedule(restore_browsing_view)
+        end
+      end,
+      on_detach = function()
+        state.view = nil
+      end,
+    })
+
+    vim.api.nvim_create_autocmd({ "TermLeave", "CursorMoved" }, {
+      group = buffer_group,
+      buffer = state.buf,
+      callback = remember_view_if_browsing,
+    })
+    vim.api.nvim_create_autocmd("TermEnter", {
+      group = buffer_group,
+      buffer = state.buf,
+      callback = function()
+        state.view = nil
+      end,
+    })
+    vim.api.nvim_create_autocmd("WinScrolled", {
+      group = buffer_group,
+      callback = function(event)
+        if tonumber(event.match) == state.win then
+          remember_view_if_browsing()
+        end
+      end,
+    })
+
     -- Post-process yanks from the agent buffer so the register holds just
     -- the message text — no terminal padding, no box-drawing borders, no
     -- surrounding blank lines. The on-screen visual highlight is
@@ -100,6 +174,7 @@ local function open_float()
     local edge_pattern = [[\v^[ 	|│┃║╽╿▏▕╎╏┆┇┊┋>]+|[ 	|│┃║╽╿▏▕╎╏┆┇┊┋]+$]]
     local border_pattern = [[\v^[ 	|│┃║╽╿▏▕╎╏┆┇┊┋─━═┄┅┈┉┌┐└┘├┤┬┴┼╔╗╚╝╠╣╦╩╬>+=\-]*$]]
     vim.api.nvim_create_autocmd("TextYankPost", {
+      group = buffer_group,
       buffer = state.buf,
       callback = function()
         local event = vim.v.event
@@ -157,6 +232,7 @@ function M.close()
     vim.api.nvim_win_close(state.win, true)
   end
   state.win = nil
+  state.view = nil
 end
 
 function M.toggle()
@@ -188,6 +264,7 @@ function M.setup(opts)
       end
       state.buf = nil
       state.win = nil
+      state.view = nil
     end,
   })
 
