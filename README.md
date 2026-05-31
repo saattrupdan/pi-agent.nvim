@@ -49,10 +49,13 @@ require("pi-agent").setup({
   width   = 0.8,       -- fraction of editor width
   height  = 0.8,       -- fraction of editor height
   border  = "rounded", -- any value accepted by nvim_open_win
+  pane_gap = 1,         -- empty cells between split panes (0 disables)
   keymap  = "<C-,>",   -- toggle keymap (set to false or "" to disable)
   abort_keymap = "<C-c>", -- terminal-mode keymap that aborts the current Pi run (set to false or "" to disable)
 })
 ```
+
+`pane_gap` only affects tiled multi-pane layouts; a single Pi pane keeps the full configured floating area.
 
 ### Changing or disabling the default keymap
 
