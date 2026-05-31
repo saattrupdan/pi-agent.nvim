@@ -94,7 +94,7 @@ Pi panes use buffer-local mappings, so they only apply inside visible Pi termina
 | `<C-w>h/j/k/l`          | Normal, terminal  | Move to the neighboring visible Pi pane          |
 | `<C-w><C-w>`            | Normal, terminal  | Cycle through visible Pi panes                   |
 
-Splits preserve the current session and open a new Pi session in the new pane. Landscape panes split vertically (side-by-side); portrait panes split horizontally (top/bottom). Closing a pane stops only that pane's Pi job and collapses the layout so the neighbor consumes the space.
+Splits preserve the current session and open a new Pi session in the new pane. Landscape panes split vertically (side-by-side); visually portrait/narrow panes split horizontally (top/bottom). When multiple panes are visible, the active pane is marked by a highlighted border/title. Closing a pane stops only that pane's Pi job and collapses the layout so the neighbor consumes the space.
 
 ### Aborting a Pi run
 

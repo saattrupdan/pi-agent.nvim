@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Multi-pane splitting now uses visual pane aspect ratio, so narrow panes from
+  an initial side-by-side split split top/bottom instead of side-by-side again.
+- The active Pi pane is highlighted when multiple panes are visible, including
+  after focus changes, splits, closes, and layout rerenders.
+- Pane navigation from terminal mode now lands in the destination Pi pane and
+  returns to terminal mode; navigation from normal mode stays in normal mode.
 - Streaming output no longer jumps the floating terminal away from the
   conversation history when browsing scrollback in normal mode.
 
