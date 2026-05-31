@@ -13,6 +13,7 @@ local defaults = {
   width = 0.8,
   height = 0.8,
   border = "rounded",
+  pane_gap = 1,
   keymap = "<C-,>",
   abort_keymap = "<C-c>",
 }
@@ -57,6 +58,22 @@ local function pane_area()
     width = width,
     height = height,
   }
+end
+
+local function pane_gap()
+  local gap = M.config.pane_gap
+  if type(gap) ~= "number" and type(gap) ~= "string" then
+    return 0
+  end
+  return math.max(0, math.floor(tonumber(gap) or 0))
+end
+
+local function split_size(size, gap)
+  local actual_gap = math.min(gap, math.max(0, size - 2))
+  local available = math.max(2, size - actual_gap)
+  local first = math.max(1, math.floor(available / 2))
+  local second = math.max(1, available - first)
+  return first, second, actual_gap
 end
 
 local function first_leaf(node)
@@ -181,9 +198,9 @@ local function rects_for_layout(node, rect, rects)
     return rects
   end
 
+  local gap = pane_gap()
   if node.split == "vertical" then
-    local first_width = math.max(1, math.floor(rect.width / 2))
-    local second_width = math.max(1, rect.width - first_width)
+    local first_width, second_width, actual_gap = split_size(rect.width, gap)
     rects_for_layout(node.first, {
       row = rect.row,
       col = rect.col,
@@ -192,13 +209,12 @@ local function rects_for_layout(node, rect, rects)
     }, rects)
     rects_for_layout(node.second, {
       row = rect.row,
-      col = rect.col + first_width,
+      col = rect.col + first_width + actual_gap,
       width = second_width,
       height = rect.height,
     }, rects)
   else
-    local first_height = math.max(1, math.floor(rect.height / 2))
-    local second_height = math.max(1, rect.height - first_height)
+    local first_height, second_height, actual_gap = split_size(rect.height, gap)
     rects_for_layout(node.first, {
       row = rect.row,
       col = rect.col,
@@ -206,7 +222,7 @@ local function rects_for_layout(node, rect, rects)
       height = first_height,
     }, rects)
     rects_for_layout(node.second, {
-      row = rect.row + first_height,
+      row = rect.row + first_height + actual_gap,
       col = rect.col,
       width = rect.width,
       height = second_height,
