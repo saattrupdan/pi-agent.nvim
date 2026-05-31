@@ -235,6 +235,24 @@ local function split_direction(rect)
   return visual_width > visual_height and "vertical" or "horizontal"
 end
 
+local function leaf_parent_split(node, target_id, parent_split)
+  if not node then
+    return nil
+  end
+  if node.id == target_id then
+    return parent_split
+  end
+  return leaf_parent_split(node.first, target_id, node.split)
+    or leaf_parent_split(node.second, target_id, node.split)
+end
+
+local function contextual_split_direction(id, rect)
+  if leaf_parent_split(state.layout, id) == "vertical" then
+    return "horizontal"
+  end
+  return split_direction(rect)
+end
+
 local function layout_rects()
   return rects_for_layout(state.layout, pane_area(), {})
 end
@@ -743,7 +761,7 @@ function M.split()
     return
   end
 
-  local split = split_direction(rect)
+  local split = contextual_split_direction(id, rect)
   local session = create_session()
   local replacement = {
     split = split,
