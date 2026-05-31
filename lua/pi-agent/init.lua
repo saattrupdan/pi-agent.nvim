@@ -98,14 +98,46 @@ local function visible_session_count()
   return count
 end
 
+local function id_in_layout(id)
+  if not id then
+    return false
+  end
+  for _, leaf_id in ipairs(collect_leaves(state.layout, {})) do
+    if leaf_id == id then
+      return true
+    end
+  end
+  return false
+end
+
+local function valid_layout_session(id)
+  return id_in_layout(id) and state.sessions[id] ~= nil
+end
+
 local function current_session_id()
-  local current_buf = vim.api.nvim_get_current_buf()
+  local current_win = vim.api.nvim_get_current_win()
   for id, session in pairs(state.sessions) do
-    if session.buf == current_buf then
+    if session.win == current_win and is_valid_win(session.win) and valid_layout_session(id) then
       return id
     end
   end
-  return state.current_id or first_leaf(state.layout)
+
+  local current_buf = vim.api.nvim_get_current_buf()
+  for id, session in pairs(state.sessions) do
+    if session.buf == current_buf and valid_layout_session(id) then
+      return id
+    end
+  end
+
+  if valid_layout_session(state.current_id) then
+    return state.current_id
+  end
+
+  local first_id = first_leaf(state.layout)
+  if valid_layout_session(first_id) then
+    return first_id
+  end
+  return nil
 end
 
 local function remember_view_if_browsing(session)
@@ -268,7 +300,7 @@ local function collapse_leaf(node, target_id)
 end
 
 local function find_layout_rect(id)
-  return layout_rects()[id] or pane_area()
+  return layout_rects()[id]
 end
 
 local function range_overlap(start_a, end_a, start_b, end_b)
@@ -706,11 +738,11 @@ function M.split()
   end
 
   local id = current_session_id()
-  if not id or not state.sessions[id] then
+  local rect = id and find_layout_rect(id)
+  if not id or not rect or not state.sessions[id] then
     return
   end
 
-  local rect = find_layout_rect(id)
   local split = split_direction(rect)
   local session = create_session()
   local replacement = {
@@ -719,7 +751,10 @@ function M.split()
     second = { id = session.id },
   }
 
-  replace_leaf(state.layout, id, replacement)
+  if not replace_leaf(state.layout, id, replacement) then
+    remove_session(session.id, true)
+    return
+  end
   state.current_id = session.id
   render_layout(session.id)
   vim.cmd("startinsert")

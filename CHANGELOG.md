@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Splitting the original left pane after splitting the right pane now correctly
+  creates a top/bottom split instead of falling back to a full-width layout.
 - Multi-pane splitting now uses layout-derived pane rectangles and visual aspect
   ratio, so full-width panes split side-by-side while half-width portrait panes
   split top/bottom.
