@@ -48,7 +48,7 @@ local function run()
   pi.setup({
     command = "cat",
     width = 0.8,
-    height = 0.8,
+    height = 0.4,
     border = "none",
     keymap = false,
     abort_keymap = false,
@@ -70,11 +70,13 @@ local function run()
   wait_for_windows(4)
 
   wins = pi_windows()
+  -- A shallow layout keeps vertical halves landscape by aspect, so the
+  -- final split must use parent context to produce a top/bottom grid.
   local expected = {
-    { col = 20, row = 8, width = 80, height = 32 },
-    { col = 20, row = 40, width = 80, height = 32 },
-    { col = 100, row = 8, width = 80, height = 32 },
-    { col = 100, row = 40, width = 80, height = 32 },
+    { col = 20, row = 24, width = 80, height = 16 },
+    { col = 20, row = 40, width = 80, height = 16 },
+    { col = 100, row = 24, width = 80, height = 16 },
+    { col = 100, row = 40, width = 80, height = 16 },
   }
 
   for index, want in ipairs(expected) do
