@@ -200,24 +200,23 @@ end
 local function split_direction(rect)
   local visual_width = rect.width
   local visual_height = rect.height * CELL_ASPECT_RATIO
-  return visual_width >= visual_height and "vertical" or "horizontal"
+  return visual_width > visual_height and "vertical" or "horizontal"
+end
+
+local function layout_rects()
+  return rects_for_layout(state.layout, pane_area(), {})
 end
 
 local function update_active_marker()
   local mark_active = visible_session_count() > 1
+  local rects = layout_rects()
   each_session(function(session, id)
     if not is_valid_win(session.win) then
       return
     end
 
     local active = mark_active and id == state.current_id
-    local row_col = vim.api.nvim_win_get_position(session.win)
-    local rect = {
-      row = row_col[1],
-      col = row_col[2],
-      width = vim.api.nvim_win_get_width(session.win),
-      height = vim.api.nvim_win_get_height(session.win),
-    }
+    local rect = rects[id] or pane_area()
     vim.api.nvim_win_set_config(session.win, window_config(rect, id, active))
     vim.wo[session.win].winhighlight = active
         and "FloatBorder:" .. ACTIVE_BORDER .. ",FloatTitle:" .. ACTIVE_TITLE
@@ -268,18 +267,88 @@ local function collapse_leaf(node, target_id)
   return first or second, true
 end
 
-local function find_visible_rect(id)
-  if is_valid_win(state.sessions[id] and state.sessions[id].win) then
-    local win = state.sessions[id].win
-    local row_col = vim.api.nvim_win_get_position(win)
-    return {
-      row = row_col[1],
-      col = row_col[2],
-      width = vim.api.nvim_win_get_width(win),
-      height = vim.api.nvim_win_get_height(win),
-    }
+local function find_layout_rect(id)
+  return layout_rects()[id] or pane_area()
+end
+
+local function range_overlap(start_a, end_a, start_b, end_b)
+  return math.max(0, math.min(end_a, end_b) - math.max(start_a, start_b))
+end
+
+local function range_gap(start_a, end_a, start_b, end_b)
+  if end_a < start_b then
+    return start_b - end_a
   end
-  return rects_for_layout(state.layout, pane_area(), {})[id] or pane_area()
+  if end_b < start_a then
+    return start_a - end_b
+  end
+  return 0
+end
+
+local function better_pane_score(score, best_score)
+  if not best_score then
+    return true
+  end
+  for index, value in ipairs(score) do
+    if value ~= best_score[index] then
+      return value < best_score[index]
+    end
+  end
+  return false
+end
+
+local function directional_score(direction, source, rect, candidate_id)
+  local source_right = source.col + source.width
+  local source_bottom = source.row + source.height
+  local rect_right = rect.col + rect.width
+  local rect_bottom = rect.row + rect.height
+  local primary
+  local overlap
+  local gap
+  local center_delta
+
+  if direction == "h" then
+    if rect_right > source.col then
+      return nil
+    end
+    primary = source.col - rect_right
+    overlap = range_overlap(source.row, source_bottom, rect.row, rect_bottom)
+    gap = range_gap(source.row, source_bottom, rect.row, rect_bottom)
+    center_delta = math.abs(source.row + source.height / 2 - (rect.row + rect.height / 2))
+  elseif direction == "l" then
+    if rect.col < source_right then
+      return nil
+    end
+    primary = rect.col - source_right
+    overlap = range_overlap(source.row, source_bottom, rect.row, rect_bottom)
+    gap = range_gap(source.row, source_bottom, rect.row, rect_bottom)
+    center_delta = math.abs(source.row + source.height / 2 - (rect.row + rect.height / 2))
+  elseif direction == "k" then
+    if rect_bottom > source.row then
+      return nil
+    end
+    primary = source.row - rect_bottom
+    overlap = range_overlap(source.col, source_right, rect.col, rect_right)
+    gap = range_gap(source.col, source_right, rect.col, rect_right)
+    center_delta = math.abs(source.col + source.width / 2 - (rect.col + rect.width / 2))
+  else
+    if rect.row < source_bottom then
+      return nil
+    end
+    primary = rect.row - source_bottom
+    overlap = range_overlap(source.col, source_right, rect.col, rect_right)
+    gap = range_gap(source.col, source_right, rect.col, rect_right)
+    center_delta = math.abs(source.col + source.width / 2 - (rect.col + rect.width / 2))
+  end
+
+  return {
+    overlap > 0 and 0 or 1,
+    primary,
+    -overlap,
+    gap,
+    center_delta,
+    candidate_id,
+  }
 end
 
 local function nearest_pane(direction)
@@ -289,9 +358,11 @@ local function nearest_pane(direction)
     return nil
   end
 
-  local source = find_visible_rect(id)
-  local source_x = source.col + source.width / 2
-  local source_y = source.row + source.height / 2
+  local rects = layout_rects()
+  local source = rects[id]
+  if not source then
+    return nil
+  end
   local best_id = nil
   local best_score = nil
 
@@ -299,32 +370,14 @@ local function nearest_pane(direction)
     if candidate_id == id or not is_valid_win(candidate.win) then
       return
     end
-    local rect = find_visible_rect(candidate_id)
-    local x = rect.col + rect.width / 2
-    local y = rect.row + rect.height / 2
-    local primary
-    local secondary
-
-    if direction == "h" then
-      primary = source_x - x
-      secondary = math.abs(source_y - y)
-    elseif direction == "l" then
-      primary = x - source_x
-      secondary = math.abs(source_y - y)
-    elseif direction == "k" then
-      primary = source_y - y
-      secondary = math.abs(source_x - x)
-    else
-      primary = y - source_y
-      secondary = math.abs(source_x - x)
+    local rect = rects[candidate_id]
+    if not rect then
+      return
     end
-
-    if primary > 0 then
-      local score = primary * 1000 + secondary
-      if not best_score or score < best_score then
-        best_score = score
-        best_id = candidate_id
-      end
+    local score = directional_score(direction, source, rect, candidate_id)
+    if score and better_pane_score(score, best_score) then
+      best_score = score
+      best_id = candidate_id
     end
   end)
 
@@ -550,7 +603,7 @@ render_layout = function(focus_id)
   end
 
   state.visible = true
-  local rects = rects_for_layout(state.layout, pane_area(), {})
+  local rects = layout_rects()
 
   each_session(function(session, id)
     local rect = rects[id]
@@ -657,7 +710,7 @@ function M.split()
     return
   end
 
-  local rect = find_visible_rect(id)
+  local rect = find_layout_rect(id)
   local split = split_direction(rect)
   local session = create_session()
   local replacement = {

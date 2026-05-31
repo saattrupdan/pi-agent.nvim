@@ -30,8 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Multi-pane splitting now uses visual pane aspect ratio, so narrow panes from
-  an initial side-by-side split split top/bottom instead of side-by-side again.
+- Multi-pane splitting now uses layout-derived pane rectangles and visual aspect
+  ratio, so full-width panes split side-by-side while half-width portrait panes
+  split top/bottom.
+- Directional pane navigation now ranks layout edges and overlapping ranges, so
+  up/down moves to the spatial pane directly above/below instead of an unrelated
+  left-most pane.
 - The active Pi pane is highlighted when multiple panes are visible, including
   after focus changes, splits, closes, and layout rerenders.
 - Pane navigation from terminal mode now lands in the destination Pi pane and
