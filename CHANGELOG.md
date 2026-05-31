@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Terminal buffer no longer forces insert mode on open — vim commands work
   immediately. Press `<CR>` in terminal mode to return to insert mode.
 
+### Fixed
+
+- Streaming output no longer jumps the floating terminal away from the
+  conversation history when browsing scrollback in normal mode.
+
 ## [0.1.0] - 2026-05-23
 
 ### Added
