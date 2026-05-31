@@ -19,6 +19,10 @@ local defaults = {
 
 M.config = vim.deepcopy(defaults)
 
+local ACTIVE_BORDER = "PiAgentActiveBorder"
+local ACTIVE_TITLE = "PiAgentActiveTitle"
+local CELL_ASPECT_RATIO = 2.2
+
 local function git_root(start_dir)
   local result = vim.fn.systemlist({ "git", "-C", start_dir, "rev-parse", "--show-toplevel" })
   if vim.v.shell_error ~= 0 or not result[1] or result[1] == "" then
@@ -82,6 +86,16 @@ local function each_session(callback)
   for id, session in pairs(state.sessions) do
     callback(session, id)
   end
+end
+
+local function visible_session_count()
+  local count = 0
+  each_session(function(session)
+    if is_valid_win(session.win) then
+      count = count + 1
+    end
+  end)
+  return count
 end
 
 local function current_session_id()
@@ -169,7 +183,7 @@ local function rects_for_layout(node, rect, rects)
   return rects
 end
 
-local function window_config(rect, id)
+local function window_config(rect, id, active)
   return {
     relative = "editor",
     width = rect.width,
@@ -178,9 +192,37 @@ local function window_config(rect, id)
     col = rect.col,
     style = "minimal",
     border = M.config.border,
-    title = string.format(" pi-agent %d ", id),
+    title = active and string.format(" pi-agent %d ● ", id) or string.format(" pi-agent %d ", id),
     title_pos = "center",
   }
+end
+
+local function split_direction(rect)
+  local visual_width = rect.width
+  local visual_height = rect.height * CELL_ASPECT_RATIO
+  return visual_width >= visual_height and "vertical" or "horizontal"
+end
+
+local function update_active_marker()
+  local mark_active = visible_session_count() > 1
+  each_session(function(session, id)
+    if not is_valid_win(session.win) then
+      return
+    end
+
+    local active = mark_active and id == state.current_id
+    local row_col = vim.api.nvim_win_get_position(session.win)
+    local rect = {
+      row = row_col[1],
+      col = row_col[2],
+      width = vim.api.nvim_win_get_width(session.win),
+      height = vim.api.nvim_win_get_height(session.win),
+    }
+    vim.api.nvim_win_set_config(session.win, window_config(rect, id, active))
+    vim.wo[session.win].winhighlight = active
+        and "FloatBorder:" .. ACTIVE_BORDER .. ",FloatTitle:" .. ACTIVE_TITLE
+      or ""
+  end)
 end
 
 local render_layout
@@ -292,13 +334,19 @@ end
 local function focus_session(id, start_insert)
   local session = id and state.sessions[id]
   if not session or not is_valid_win(session.win) then
-    return
+    return false
   end
   state.current_id = id
   vim.api.nvim_set_current_win(session.win)
+  update_active_marker()
   if start_insert then
-    vim.cmd("startinsert")
+    vim.schedule(function()
+      if is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win then
+        vim.cmd("startinsert")
+      end
+    end)
   end
+  return true
 end
 
 local function cycle_pane()
@@ -323,7 +371,11 @@ local function navigate_pane(direction)
   end
 
   local target_id = direction == "w" and cycle_pane() or nearest_pane(direction)
-  focus_session(target_id, was_terminal)
+  if not focus_session(target_id, was_terminal) and was_terminal then
+    vim.schedule(function()
+      vim.cmd("startinsert")
+    end)
+  end
 end
 
 local function setup_session_keymaps(session)
@@ -510,7 +562,7 @@ render_layout = function(focus_id)
       return
     end
 
-    local config = window_config(rect, id)
+    local config = window_config(rect, id, false)
     if is_valid_win(session.win) then
       vim.api.nvim_win_set_config(session.win, config)
     else
@@ -606,7 +658,7 @@ function M.split()
   end
 
   local rect = find_visible_rect(id)
-  local split = rect.width >= rect.height and "vertical" or "horizontal"
+  local split = split_direction(rect)
   local session = create_session()
   local replacement = {
     split = split,
@@ -642,6 +694,9 @@ end
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", defaults, opts or {})
 
+  vim.api.nvim_set_hl(0, ACTIVE_BORDER, { default = true, link = "DiagnosticInfo" })
+  vim.api.nvim_set_hl(0, ACTIVE_TITLE, { default = true, link = "DiagnosticInfo" })
+
   vim.api.nvim_create_user_command("PiAgent", M.toggle, {})
   vim.api.nvim_create_user_command("PiAgentOpen", M.open, {})
   vim.api.nvim_create_user_command("PiAgentClose", M.close, {})
@@ -653,6 +708,21 @@ function M.setup(opts)
     callback = function()
       if state.visible then
         render_layout(state.current_id or first_leaf(state.layout))
+      end
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("WinEnter", {
+    group = group,
+    callback = function()
+      if not state.visible then
+        return
+      end
+      local id = current_session_id()
+      local session = id and state.sessions[id]
+      if session and is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win then
+        state.current_id = id
+        update_active_marker()
       end
     end,
   })
