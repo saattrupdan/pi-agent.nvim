@@ -4,9 +4,10 @@ A tiny Neovim plugin that opens your [Pi](https://github.com/) agent in a center
 
 ## Features
 
-- Floating terminal window, 70% × 70% of the editor by default
-- Automatically `cd`s into the git root of the current buffer, falling back to `cwd`
-- Toggle in and out — the `pi` session persists across toggles until you exit it
+- Floating Pi area, 80% × 80% of the editor by default, that recenters and resizes with Neovim
+- Automatically `cd`s each Pi session into the git root of the current buffer, falling back to `cwd`
+- Multiple Pi terminal sessions in tiled floating panes
+- Toggle in and out — all `pi` sessions persist across toggles until you close their pane or exit Pi
 - Configurable size, border, and command
 
 ## Requirements
@@ -45,8 +46,8 @@ The defaults:
 ```lua
 require("pi-agent").setup({
   command = "pi",      -- command to run in the floating terminal
-  width   = 0.7,       -- fraction of editor width
-  height  = 0.7,       -- fraction of editor height
+  width   = 0.8,       -- fraction of editor width
+  height  = 0.8,       -- fraction of editor height
   border  = "rounded", -- any value accepted by nvim_open_win
   keymap  = "<C-,>",   -- toggle keymap (set to false or "" to disable)
   abort_keymap = "<C-c>", -- terminal-mode keymap that aborts the current Pi run (set to false or "" to disable)
@@ -74,13 +75,26 @@ vim.keymap.set("n", "<F4>", "<cmd>PiAgent<CR>", { desc = "Toggle Pi agent" })
 
 ## Usage
 
-| Command         | Description                              |
-| --------------- | ---------------------------------------- |
-| `:PiAgent`      | Toggle the floating Pi agent window      |
-| `:PiAgentOpen`  | Open (or focus) the floating window      |
-| `:PiAgentClose` | Hide the floating window                 |
+| Command         | Description                         |
+| --------------- | ----------------------------------- |
+| `:PiAgent`      | Toggle the floating Pi area         |
+| `:PiAgentOpen`  | Open (or focus) the floating panes  |
+| `:PiAgentClose` | Hide all floating panes             |
 
-Default keymap: `<C-,>` toggles the window in normal and terminal modes. See [Configuration](#configuration) to change or disable it.
+Default keymap: `<C-,>` toggles the Pi area in normal and terminal modes. See [Configuration](#configuration) to change or disable it.
+
+### Pane controls
+
+Pi panes use buffer-local mappings, so they only apply inside visible Pi terminal buffers.
+
+| Key                     | Modes             | Description                                      |
+| ----------------------- | ----------------- | ------------------------------------------------ |
+| `<C-s>`                 | Normal, terminal  | Split the current Pi pane and start a fresh Pi   |
+| `<C-d>`                 | Normal, terminal  | Close the current Pi pane/session                |
+| `<C-w>h/j/k/l`          | Normal, terminal  | Move to the neighboring visible Pi pane          |
+| `<C-w><C-w>`            | Normal, terminal  | Cycle through visible Pi panes                   |
+
+Splits preserve the current session and open a new Pi session in the new pane. Landscape panes split vertically (side-by-side); portrait panes split horizontally (top/bottom). Closing a pane stops only that pane's Pi job and collapses the layout so the neighbor consumes the space.
 
 ### Aborting a Pi run
 
@@ -88,7 +102,7 @@ Pi normally cancels the current generation with `<Esc>`, but `<Esc>` is overload
 
 ## How it works
 
-When you open the window, the plugin runs `git -C <cwd> rev-parse --show-toplevel`. If that succeeds, the floating terminal is launched in the repo root; otherwise it uses the current working directory. The buffer is kept around between toggles, so closing the window doesn't kill your `pi` session — only exiting `pi` itself does.
+When you create a Pi session, the plugin runs `git -C <cwd> rev-parse --show-toplevel`. If that succeeds, the floating terminal is launched in the repo root; otherwise it uses the current working directory. Buffers are kept around between toggles, so hiding the Pi area doesn't kill any `pi` sessions. Closing an individual pane with `<C-d>` stops that pane's job; exiting Neovim stops all live jobs.
 
 ## License
 
