@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Floating Pi area now supports multiple live terminal sessions in tiled panes:
+  `<C-s>` splits the current pane, `<C-d>` closes the current pane/session, and
+  `<C-w>h/j/k/l` plus `<C-w><C-w>` navigate among visible Pi panes with
+  buffer-local mappings.
+
 - Yanks from the agent buffer are post-processed via `TextYankPost`: each
   line has terminal padding, box-drawing vertical glyphs (`│ ┃ ║ ╽ ╿ ▏ ▕ ╎
   ╏ ┆ ┇ ┊ ┋ |`), and the input-box `>` prompt stripped from its edges;
@@ -18,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Floating Pi area now defaults to 80% × 80% of the editor and rerenders its
+  pane layout when Neovim is resized.
 - Terminal buffer no longer forces insert mode on open — vim commands work
   immediately. Press `<CR>` in terminal mode to return to insert mode.
 

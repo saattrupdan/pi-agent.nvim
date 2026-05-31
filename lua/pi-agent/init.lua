@@ -1,16 +1,17 @@
 local M = {}
 
 local state = {
-  buf = nil,
-  win = nil,
-  job = nil,
-  view = nil,
+  sessions = {},
+  layout = nil,
+  current_id = nil,
+  next_id = 1,
+  visible = false,
 }
 
 local defaults = {
   command = "pi",
-  width = 0.7,
-  height = 0.7,
+  width = 0.8,
+  height = 0.8,
   border = "rounded",
   keymap = "<C-,>",
   abort_keymap = "<C-c>",
@@ -35,204 +36,550 @@ local function in_terminal_mode()
   return vim.api.nvim_get_mode().mode:sub(1, 1) == "t"
 end
 
-local function agent_window_active()
-  return M.is_open() and vim.api.nvim_win_get_buf(state.win) == state.buf
+local function is_valid_win(win)
+  return win and vim.api.nvim_win_is_valid(win)
 end
 
-local function remember_view_if_browsing()
-  if not agent_window_active() then
-    state.view = nil
+local function is_valid_buf(buf)
+  return buf and vim.api.nvim_buf_is_valid(buf)
+end
+
+local function pane_area()
+  local width = math.max(1, math.floor(vim.o.columns * M.config.width))
+  local height = math.max(1, math.floor(vim.o.lines * M.config.height))
+  return {
+    row = math.floor((vim.o.lines - height) / 2),
+    col = math.floor((vim.o.columns - width) / 2),
+    width = width,
+    height = height,
+  }
+end
+
+local function first_leaf(node)
+  if not node then
+    return nil
+  end
+  if node.id then
+    return node.id
+  end
+  return first_leaf(node.first) or first_leaf(node.second)
+end
+
+local function collect_leaves(node, leaves)
+  if not node then
+    return leaves
+  end
+  if node.id then
+    table.insert(leaves, node.id)
+    return leaves
+  end
+  collect_leaves(node.first, leaves)
+  collect_leaves(node.second, leaves)
+  return leaves
+end
+
+local function each_session(callback)
+  for id, session in pairs(state.sessions) do
+    callback(session, id)
+  end
+end
+
+local function current_session_id()
+  local current_buf = vim.api.nvim_get_current_buf()
+  for id, session in pairs(state.sessions) do
+    if session.buf == current_buf then
+      return id
+    end
+  end
+  return state.current_id or first_leaf(state.layout)
+end
+
+local function remember_view_if_browsing(session)
+  if not session or not is_valid_win(session.win) or vim.api.nvim_get_current_win() ~= session.win then
+    if session then
+      session.view = nil
+    end
     return
   end
   if in_terminal_mode() then
-    state.view = nil
+    session.view = nil
     return
   end
 
-  vim.api.nvim_win_call(state.win, function()
+  vim.api.nvim_win_call(session.win, function()
     if vim.fn.line("w$") >= vim.fn.line("$") then
-      state.view = nil
+      session.view = nil
     else
-      state.view = vim.fn.winsaveview()
+      session.view = vim.fn.winsaveview()
     end
   end)
 end
 
-local function restore_browsing_view()
-  if not state.view or not agent_window_active() or in_terminal_mode() then
+local function restore_browsing_view(session)
+  if not session or not session.view or not is_valid_win(session.win) or in_terminal_mode() then
     return
   end
 
-  local view = vim.deepcopy(state.view)
-  vim.api.nvim_win_call(state.win, function()
+  local view = vim.deepcopy(session.view)
+  vim.api.nvim_win_call(session.win, function()
     vim.fn.winrestview(view)
   end)
 end
 
-local function open_float()
-  local width = math.floor(vim.o.columns * M.config.width)
-  local height = math.floor(vim.o.lines * M.config.height)
-  local row = math.floor((vim.o.lines - height) / 2)
-  local col = math.floor((vim.o.columns - width) / 2)
-
-  local buf_existed = state.buf and vim.api.nvim_buf_is_valid(state.buf)
-  if not buf_existed then
-    state.buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[state.buf].bufhidden = "hide"
+local function rects_for_layout(node, rect, rects)
+  if not node then
+    return rects
+  end
+  if node.id then
+    rects[node.id] = rect
+    return rects
   end
 
-  state.win = vim.api.nvim_open_win(state.buf, true, {
+  if node.split == "vertical" then
+    local first_width = math.max(1, math.floor(rect.width / 2))
+    local second_width = math.max(1, rect.width - first_width)
+    rects_for_layout(node.first, {
+      row = rect.row,
+      col = rect.col,
+      width = first_width,
+      height = rect.height,
+    }, rects)
+    rects_for_layout(node.second, {
+      row = rect.row,
+      col = rect.col + first_width,
+      width = second_width,
+      height = rect.height,
+    }, rects)
+  else
+    local first_height = math.max(1, math.floor(rect.height / 2))
+    local second_height = math.max(1, rect.height - first_height)
+    rects_for_layout(node.first, {
+      row = rect.row,
+      col = rect.col,
+      width = rect.width,
+      height = first_height,
+    }, rects)
+    rects_for_layout(node.second, {
+      row = rect.row + first_height,
+      col = rect.col,
+      width = rect.width,
+      height = second_height,
+    }, rects)
+  end
+  return rects
+end
+
+local function window_config(rect, id)
+  return {
     relative = "editor",
-    width = width,
-    height = height,
-    row = row,
-    col = col,
+    width = rect.width,
+    height = rect.height,
+    row = rect.row,
+    col = rect.col,
     style = "minimal",
     border = M.config.border,
-    title = " pi-agent ",
+    title = string.format(" pi-agent %d ", id),
     title_pos = "center",
+  }
+end
+
+local render_layout
+local remove_session
+
+local function replace_leaf(node, target_id, replacement)
+  if not node then
+    return false
+  end
+  if node.id == target_id then
+    for key in pairs(node) do
+      node[key] = nil
+    end
+    for key, value in pairs(replacement) do
+      node[key] = value
+    end
+    return true
+  end
+  return replace_leaf(node.first, target_id, replacement) or replace_leaf(node.second, target_id, replacement)
+end
+
+local function collapse_leaf(node, target_id)
+  if not node then
+    return nil, false
+  end
+  if node.id then
+    if node.id == target_id then
+      return nil, true
+    end
+    return node, false
+  end
+
+  local first, removed_first = collapse_leaf(node.first, target_id)
+  local second, removed_second = collapse_leaf(node.second, target_id)
+  if not removed_first and not removed_second then
+    return node, false
+  end
+  if first and second then
+    node.first = first
+    node.second = second
+    return node, true
+  end
+  return first or second, true
+end
+
+local function find_visible_rect(id)
+  if is_valid_win(state.sessions[id] and state.sessions[id].win) then
+    local win = state.sessions[id].win
+    local row_col = vim.api.nvim_win_get_position(win)
+    return {
+      row = row_col[1],
+      col = row_col[2],
+      width = vim.api.nvim_win_get_width(win),
+      height = vim.api.nvim_win_get_height(win),
+    }
+  end
+  return rects_for_layout(state.layout, pane_area(), {})[id] or pane_area()
+end
+
+local function nearest_pane(direction)
+  local id = current_session_id()
+  local session = id and state.sessions[id]
+  if not session or not is_valid_win(session.win) then
+    return nil
+  end
+
+  local source = find_visible_rect(id)
+  local source_x = source.col + source.width / 2
+  local source_y = source.row + source.height / 2
+  local best_id = nil
+  local best_score = nil
+
+  each_session(function(candidate, candidate_id)
+    if candidate_id == id or not is_valid_win(candidate.win) then
+      return
+    end
+    local rect = find_visible_rect(candidate_id)
+    local x = rect.col + rect.width / 2
+    local y = rect.row + rect.height / 2
+    local primary
+    local secondary
+
+    if direction == "h" then
+      primary = source_x - x
+      secondary = math.abs(source_y - y)
+    elseif direction == "l" then
+      primary = x - source_x
+      secondary = math.abs(source_y - y)
+    elseif direction == "k" then
+      primary = source_y - y
+      secondary = math.abs(source_x - x)
+    else
+      primary = y - source_y
+      secondary = math.abs(source_x - x)
+    end
+
+    if primary > 0 then
+      local score = primary * 1000 + secondary
+      if not best_score or score < best_score then
+        best_score = score
+        best_id = candidate_id
+      end
+    end
+  end)
+
+  return best_id
+end
+
+local function focus_session(id, start_insert)
+  local session = id and state.sessions[id]
+  if not session or not is_valid_win(session.win) then
+    return
+  end
+  state.current_id = id
+  vim.api.nvim_set_current_win(session.win)
+  if start_insert then
+    vim.cmd("startinsert")
+  end
+end
+
+local function cycle_pane()
+  local leaves = collect_leaves(state.layout, {})
+  if #leaves == 0 then
+    return nil
+  end
+
+  local id = current_session_id()
+  for index, leaf_id in ipairs(leaves) do
+    if leaf_id == id then
+      return leaves[index % #leaves + 1]
+    end
+  end
+  return leaves[1]
+end
+
+local function navigate_pane(direction)
+  local was_terminal = in_terminal_mode()
+  if was_terminal then
+    vim.cmd("stopinsert")
+  end
+
+  local target_id = direction == "w" and cycle_pane() or nearest_pane(direction)
+  focus_session(target_id, was_terminal)
+end
+
+local function setup_session_keymaps(session)
+  local opts = { buffer = session.buf, nowait = true }
+
+  -- Forward control keys Pi relies on (e.g. <C-o> toggles detailed tool
+  -- output) so a global tmap can't swallow them in the agent buffer.
+  for _, key in ipairs({ "<C-o>" }) do
+    vim.keymap.set("t", key, key, opts)
+  end
+
+  -- Terminal lines are padded with trailing spaces to the window width, so
+  -- linewise visual would highlight all that padding. Remap V to a charwise
+  -- select from column 0 to the last non-blank, and remap $ in visual mode to
+  -- g_ so extending a selection also stops at text.
+  vim.keymap.set("n", "V", "0vg_", opts)
+  vim.keymap.set("x", "$", "g_", opts)
+
+  vim.keymap.set({ "n", "t" }, "<C-s>", function()
+    M.split()
+  end, vim.tbl_extend("force", opts, { desc = "Pi: split pane" }))
+
+  vim.keymap.set({ "n", "t" }, "<C-d>", function()
+    M.close_pane()
+  end, vim.tbl_extend("force", opts, { desc = "Pi: close pane" }))
+
+  for _, direction in ipairs({ "h", "j", "k", "l" }) do
+    vim.keymap.set({ "n", "t" }, "<C-w>" .. direction, function()
+      navigate_pane(direction)
+    end, vim.tbl_extend("force", opts, { desc = "Pi: move pane " .. direction }))
+  end
+
+  vim.keymap.set({ "n", "t" }, "<C-w><C-w>", function()
+    navigate_pane("w")
+  end, vim.tbl_extend("force", opts, { desc = "Pi: cycle panes" }))
+
+  -- Map a configurable key to <Esc> so it aborts the current Pi run (Pi's
+  -- normal cancel key) without colliding with <Esc> usage elsewhere in Neovim.
+  if M.config.abort_keymap and M.config.abort_keymap ~= "" then
+    vim.keymap.set("t", M.config.abort_keymap, function()
+      if session.job then
+        vim.api.nvim_chan_send(session.job, "\27")
+      end
+    end, vim.tbl_extend("force", opts, { desc = "Pi: abort current run" }))
+  end
+end
+
+local function setup_session_autocmds(session)
+  local group = vim.api.nvim_create_augroup("PiAgentBuffer" .. session.id, { clear = true })
+
+  vim.api.nvim_buf_attach(session.buf, false, {
+    on_lines = function()
+      if session.view then
+        vim.schedule(function()
+          restore_browsing_view(session)
+        end)
+      end
+    end,
+    on_detach = function()
+      session.view = nil
+    end,
   })
 
-  if not buf_existed then
-    local cwd = resolve_cwd()
-    state.job = vim.fn.termopen(M.config.command, {
+  vim.api.nvim_create_autocmd({ "TermLeave", "CursorMoved" }, {
+    group = group,
+    buffer = session.buf,
+    callback = function()
+      remember_view_if_browsing(session)
+    end,
+  })
+  vim.api.nvim_create_autocmd("TermEnter", {
+    group = group,
+    buffer = session.buf,
+    callback = function()
+      session.view = nil
+    end,
+  })
+  vim.api.nvim_create_autocmd("WinScrolled", {
+    group = group,
+    callback = function(event)
+      if tonumber(event.match) == session.win then
+        remember_view_if_browsing(session)
+      end
+    end,
+  })
+
+  -- Post-process yanks from the agent buffer so the register holds just the
+  -- message text — no terminal padding, no box-drawing borders, no surrounding
+  -- blank lines. The UI is never modified; only register contents change.
+  local edge_pattern = [[\v^[ 	|│┃║╽╿▏▕╎╏┆┇┊┋>]+|[ 	|│┃║╽╿▏▕╎╏┆┇┊┋]+$]]
+  local border_pattern = [[\v^[ 	|│┃║╽╿▏▕╎╏┆┇┊┋─━═┄┅┈┉┌┐└┘├┤┬┴┼╔╗╚╝╠╣╦╩╬>+=\-]*$]]
+  vim.api.nvim_create_autocmd("TextYankPost", {
+    group = group,
+    buffer = session.buf,
+    callback = function()
+      local event = vim.v.event
+      if event.operator ~= "y" then
+        return
+      end
+      local lines = vim.deepcopy(event.regcontents or {})
+      if #lines == 0 then
+        return
+      end
+
+      local cleaned = {}
+      for _, line in ipairs(lines) do
+        local stripped = vim.fn.substitute(line, edge_pattern, "", "g")
+        if vim.fn.match(stripped, border_pattern) < 0 then
+          table.insert(cleaned, stripped)
+        end
+      end
+
+      while #cleaned > 0 and cleaned[1] == "" do
+        table.remove(cleaned, 1)
+      end
+      while #cleaned > 0 and cleaned[#cleaned] == "" do
+        table.remove(cleaned)
+      end
+
+      local regname = event.regname
+      if regname == nil or regname == "" then
+        regname = '"'
+      end
+      vim.fn.setreg(regname, cleaned, event.regtype)
+      if regname == '"' then
+        vim.fn.setreg("0", cleaned, event.regtype)
+      end
+    end,
+  })
+end
+
+local function create_session()
+  local id = state.next_id
+  state.next_id = state.next_id + 1
+
+  local session = {
+    id = id,
+    buf = vim.api.nvim_create_buf(false, true),
+    win = nil,
+    job = nil,
+    view = nil,
+    closing = false,
+  }
+  state.sessions[id] = session
+  vim.bo[session.buf].bufhidden = "hide"
+
+  setup_session_keymaps(session)
+  setup_session_autocmds(session)
+
+  local cwd = resolve_cwd()
+  vim.api.nvim_buf_call(session.buf, function()
+    session.job = vim.fn.termopen(M.config.command, {
       cwd = cwd,
       on_exit = function()
-        state.job = nil
-        state.view = nil
-        if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
-          vim.api.nvim_buf_delete(state.buf, { force = true })
-        end
-        state.buf = nil
-      end,
-    })
-
-    local buffer_group = vim.api.nvim_create_augroup("PiAgentBuffer", { clear = true })
-
-    -- Forward control keys Pi relies on (e.g. <C-o> toggles detailed tool
-    -- output) so a global tmap can't swallow them in the agent buffer.
-    for _, key in ipairs({ "<C-o>" }) do
-      vim.keymap.set("t", key, key, { buffer = state.buf, nowait = true })
-    end
-
-    -- Terminal lines are padded with trailing spaces to the window width,
-    -- so linewise visual would highlight all that padding. Remap V to a
-    -- charwise select from column 0 to the last non-blank, and remap $ in
-    -- visual mode to g_ so extending a selection also stops at text.
-    vim.keymap.set("n", "V", "0vg_", { buffer = state.buf, nowait = true })
-    vim.keymap.set("x", "$", "g_", { buffer = state.buf, nowait = true })
-
-    -- Map a configurable key to <Esc> so it aborts the current Pi run
-    -- (Pi's normal cancel key) without colliding with <Esc> usage elsewhere
-    -- in Neovim.
-    if M.config.abort_keymap and M.config.abort_keymap ~= "" then
-      vim.keymap.set("t", M.config.abort_keymap, function()
-        if state.job then
-          vim.api.nvim_chan_send(state.job, "\27")
-        end
-      end, { buffer = state.buf, nowait = true, desc = "Pi: abort current run" })
-    end
-
-    vim.api.nvim_buf_attach(state.buf, false, {
-      on_lines = function()
-        if state.view then
-          vim.schedule(restore_browsing_view)
-        end
-      end,
-      on_detach = function()
-        state.view = nil
-      end,
-    })
-
-    vim.api.nvim_create_autocmd({ "TermLeave", "CursorMoved" }, {
-      group = buffer_group,
-      buffer = state.buf,
-      callback = remember_view_if_browsing,
-    })
-    vim.api.nvim_create_autocmd("TermEnter", {
-      group = buffer_group,
-      buffer = state.buf,
-      callback = function()
-        state.view = nil
-      end,
-    })
-    vim.api.nvim_create_autocmd("WinScrolled", {
-      group = buffer_group,
-      callback = function(event)
-        if tonumber(event.match) == state.win then
-          remember_view_if_browsing()
-        end
-      end,
-    })
-
-    -- Post-process yanks from the agent buffer so the register holds just
-    -- the message text — no terminal padding, no box-drawing borders, no
-    -- surrounding blank lines. The on-screen visual highlight is
-    -- unaffected (we never modify the buffer); only what `p` pastes
-    -- changes. Vim regex is used because Lua patterns' `[...]` class is
-    -- byte-based and breaks on multi-byte UTF-8 box-drawing characters.
-    local edge_pattern = [[\v^[ 	|│┃║╽╿▏▕╎╏┆┇┊┋>]+|[ 	|│┃║╽╿▏▕╎╏┆┇┊┋]+$]]
-    local border_pattern = [[\v^[ 	|│┃║╽╿▏▕╎╏┆┇┊┋─━═┄┅┈┉┌┐└┘├┤┬┴┼╔╗╚╝╠╣╦╩╬>+=\-]*$]]
-    vim.api.nvim_create_autocmd("TextYankPost", {
-      group = buffer_group,
-      buffer = state.buf,
-      callback = function()
-        local event = vim.v.event
-        if event.operator ~= "y" then
-          return
-        end
-        local lines = vim.deepcopy(event.regcontents or {})
-        if #lines == 0 then
-          return
-        end
-
-        local cleaned = {}
-        for _, line in ipairs(lines) do
-          local stripped = vim.fn.substitute(line, edge_pattern, "", "g")
-          if vim.fn.match(stripped, border_pattern) < 0 then
-            table.insert(cleaned, stripped)
+        vim.schedule(function()
+          if session.closing then
+            return
           end
-        end
-
-        while #cleaned > 0 and cleaned[1] == "" do
-          table.remove(cleaned, 1)
-        end
-        while #cleaned > 0 and cleaned[#cleaned] == "" do
-          table.remove(cleaned)
-        end
-
-        local regname = event.regname
-        if regname == nil or regname == "" then
-          regname = '"'
-        end
-        vim.fn.setreg(regname, cleaned, event.regtype)
-        if regname == '"' then
-          vim.fn.setreg("0", cleaned, event.regtype)
-        end
+          remove_session(id, false)
+        end)
       end,
     })
+  end)
+
+  return session
+end
+
+render_layout = function(focus_id)
+  if not state.layout then
+    state.visible = false
+    return
+  end
+
+  state.visible = true
+  local rects = rects_for_layout(state.layout, pane_area(), {})
+
+  each_session(function(session, id)
+    local rect = rects[id]
+    if not rect or not is_valid_buf(session.buf) then
+      if is_valid_win(session.win) then
+        pcall(vim.api.nvim_win_close, session.win, true)
+      end
+      session.win = nil
+      return
+    end
+
+    local config = window_config(rect, id)
+    if is_valid_win(session.win) then
+      vim.api.nvim_win_set_config(session.win, config)
+    else
+      session.win = vim.api.nvim_open_win(session.buf, false, config)
+    end
+  end)
+
+  focus_session(focus_id or state.current_id or first_leaf(state.layout), in_terminal_mode())
+end
+
+remove_session = function(id, stop_job)
+  local session = state.sessions[id]
+  if not session then
+    return
+  end
+
+  session.closing = true
+  if is_valid_win(session.win) then
+    pcall(vim.api.nvim_win_close, session.win, true)
+  end
+  if stop_job and session.job then
+    pcall(vim.fn.jobstop, session.job)
+  end
+  if is_valid_buf(session.buf) then
+    pcall(vim.api.nvim_buf_delete, session.buf, { force = true })
+  end
+
+  state.sessions[id] = nil
+  state.layout = collapse_leaf(state.layout, id)
+  if state.current_id == id then
+    state.current_id = first_leaf(state.layout)
+  end
+
+  if state.visible then
+    render_layout(state.current_id)
   end
 end
 
 function M.is_open()
-  return state.win and vim.api.nvim_win_is_valid(state.win)
+  if not state.visible then
+    return false
+  end
+  for _, session in pairs(state.sessions) do
+    if is_valid_win(session.win) then
+      return true
+    end
+  end
+  return false
 end
 
 function M.open()
-  if M.is_open() then
-    vim.api.nvim_set_current_win(state.win)
-  else
-    open_float()
+  if not state.layout then
+    local session = create_session()
+    state.layout = { id = session.id }
+    state.current_id = session.id
   end
+
+  render_layout(state.current_id or first_leaf(state.layout))
   vim.cmd("startinsert")
 end
 
 function M.close()
-  if M.is_open() then
-    vim.api.nvim_win_close(state.win, true)
-  end
-  state.win = nil
-  state.view = nil
+  each_session(function(session)
+    if is_valid_win(session.win) then
+      pcall(vim.api.nvim_win_close, session.win, true)
+    end
+    session.win = nil
+  end)
+  state.visible = false
 end
 
 function M.toggle()
@@ -243,6 +590,55 @@ function M.toggle()
   end
 end
 
+function M.split()
+  local was_terminal = in_terminal_mode()
+  if was_terminal then
+    vim.cmd("stopinsert")
+  end
+  if not M.is_open() then
+    M.open()
+    return
+  end
+
+  local id = current_session_id()
+  if not id or not state.sessions[id] then
+    return
+  end
+
+  local rect = find_visible_rect(id)
+  local split = rect.width >= rect.height and "vertical" or "horizontal"
+  local session = create_session()
+  local replacement = {
+    split = split,
+    first = { id = id },
+    second = { id = session.id },
+  }
+
+  replace_leaf(state.layout, id, replacement)
+  state.current_id = session.id
+  render_layout(session.id)
+  vim.cmd("startinsert")
+end
+
+function M.close_pane()
+  local was_terminal = in_terminal_mode()
+  if was_terminal then
+    vim.cmd("stopinsert")
+  end
+
+  local id = current_session_id()
+  if not id then
+    return
+  end
+  remove_session(id, true)
+
+  if state.layout then
+    focus_session(state.current_id or first_leaf(state.layout), was_terminal)
+  else
+    state.visible = false
+  end
+end
+
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", defaults, opts or {})
 
@@ -250,21 +646,36 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("PiAgentOpen", M.open, {})
   vim.api.nvim_create_user_command("PiAgentClose", M.close, {})
 
-  -- Let `:wqa` / `:qa` exit cleanly even when the agent buffer is still
-  -- alive — otherwise Neovim raises E947 for the running terminal job.
-  vim.api.nvim_create_autocmd("ExitPre", {
-    group = vim.api.nvim_create_augroup("PiAgentExit", { clear = true }),
+  local group = vim.api.nvim_create_augroup("PiAgent", { clear = true })
+
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = group,
     callback = function()
-      if state.job then
-        pcall(vim.fn.jobstop, state.job)
-        state.job = nil
+      if state.visible then
+        render_layout(state.current_id or first_leaf(state.layout))
       end
-      if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
-        pcall(vim.api.nvim_buf_delete, state.buf, { force = true })
-      end
-      state.buf = nil
-      state.win = nil
-      state.view = nil
+    end,
+  })
+
+  -- Let `:wqa` / `:qa` exit cleanly even when agent buffers are still alive —
+  -- otherwise Neovim raises E947 for running terminal jobs.
+  vim.api.nvim_create_autocmd("ExitPre", {
+    group = group,
+    callback = function()
+      each_session(function(session)
+        session.closing = true
+        if session.job then
+          pcall(vim.fn.jobstop, session.job)
+          session.job = nil
+        end
+        if is_valid_buf(session.buf) then
+          pcall(vim.api.nvim_buf_delete, session.buf, { force = true })
+        end
+      end)
+      state.sessions = {}
+      state.layout = nil
+      state.current_id = nil
+      state.visible = false
     end,
   })
 
