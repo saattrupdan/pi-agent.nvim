@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Inactive Pi panes now follow their output: when a non-focused session emits
+  new lines it scrolls to the bottom instead of jumping to the top. The focused
+  pane keeps its browsing-view behaviour so scrolling back to read is preserved.
+
 ### Added
 
 - `pane_gap` configures empty cells between tiled Pi panes, defaulting to one

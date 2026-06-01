@@ -189,6 +189,15 @@ local function restore_browsing_view(session)
   end)
 end
 
+local function follow_output(session)
+  if not session or not is_valid_win(session.win) then
+    return
+  end
+  vim.api.nvim_win_call(session.win, function()
+    pcall(vim.api.nvim_win_set_cursor, session.win, { vim.fn.line("$"), 0 })
+  end)
+end
+
 local function rects_for_layout(node, rect, rects)
   if not node then
     return rects
@@ -547,11 +556,15 @@ local function setup_session_autocmds(session)
 
   vim.api.nvim_buf_attach(session.buf, false, {
     on_lines = function()
-      if session.view then
-        vim.schedule(function()
-          restore_browsing_view(session)
-        end)
-      end
+      vim.schedule(function()
+        if vim.api.nvim_get_current_win() == session.win then
+          if session.view then
+            restore_browsing_view(session)
+          end
+        else
+          follow_output(session)
+        end
+      end)
     end,
     on_detach = function()
       session.view = nil
