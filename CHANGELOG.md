@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pane_gap` configures empty cells between tiled Pi panes, defaulting to one
   cell so active borders do not overlap adjacent panes.
 - Floating Pi area now supports multiple live terminal sessions in tiled panes:
-  `<C-s>` splits the current pane, `<C-d>` closes the current pane/session, and
+  `<C-s>` splits the current pane, `<C-x>` closes the current pane/session
+  (after a one-key confirmation), and
   `<C-w>h/j/k/l` plus `<C-w><C-w>` navigate among visible Pi panes with
   buffer-local mappings.
 

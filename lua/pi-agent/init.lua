@@ -526,7 +526,7 @@ local function setup_session_keymaps(session)
     M.split()
   end, vim.tbl_extend("force", opts, { desc = "Pi: split pane" }))
 
-  vim.keymap.set({ "n", "t" }, "<C-d>", function()
+  vim.keymap.set({ "n", "t" }, "<C-x>", function()
     M.close_pane()
   end, vim.tbl_extend("force", opts, { desc = "Pi: close pane" }))
 
@@ -817,6 +817,15 @@ function M.close_pane()
   if not id then
     return
   end
+
+  -- One-keystroke confirmation: <y> closes, anything else cancels.
+  if vim.fn.confirm("Close this Pi pane?", "&Yes\n&No", 2) ~= 1 then
+    if was_terminal then
+      vim.cmd("startinsert")
+    end
+    return
+  end
+
   remove_session(id, true)
 
   if state.layout then

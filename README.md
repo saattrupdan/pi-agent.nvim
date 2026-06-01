@@ -93,11 +93,11 @@ Pi panes use buffer-local mappings, so they only apply inside visible Pi termina
 | Key                     | Modes             | Description                                      |
 | ----------------------- | ----------------- | ------------------------------------------------ |
 | `<C-s>`                 | Normal, terminal  | Split the current Pi pane and start a fresh Pi   |
-| `<C-d>`                 | Normal, terminal  | Close the current Pi pane/session                |
+| `<C-x>`                 | Normal, terminal  | Close the current Pi pane/session (confirm with `y`) |
 | `<C-w>h/j/k/l`          | Normal, terminal  | Move to the neighboring visible Pi pane          |
 | `<C-w><C-w>`            | Normal, terminal  | Cycle through visible Pi panes                   |
 
-Splits preserve the current session and open a new Pi session in the new pane. Landscape panes split vertically (side-by-side); visually portrait/narrow panes split horizontally (top/bottom). When multiple panes are visible, the active pane is marked by a highlighted border/title. Closing a pane stops only that pane's Pi job and collapses the layout so the neighbor consumes the space.
+Splits preserve the current session and open a new Pi session in the new pane. Landscape panes split vertically (side-by-side); visually portrait/narrow panes split horizontally (top/bottom). When multiple panes are visible, the active pane is marked by a highlighted border/title. Closing a pane asks for a one-key confirmation, then stops only that pane's Pi job and collapses the layout so the neighbor consumes the space.
 
 ### Aborting a Pi run
 
@@ -105,7 +105,7 @@ Pi normally cancels the current generation with `<Esc>`, but `<Esc>` is overload
 
 ## How it works
 
-When you create a Pi session, the plugin runs `git -C <cwd> rev-parse --show-toplevel`. If that succeeds, the floating terminal is launched in the repo root; otherwise it uses the current working directory. Buffers are kept around between toggles, so hiding the Pi area doesn't kill any `pi` sessions. Closing an individual pane with `<C-d>` stops that pane's job; exiting Neovim stops all live jobs.
+When you create a Pi session, the plugin runs `git -C <cwd> rev-parse --show-toplevel`. If that succeeds, the floating terminal is launched in the repo root; otherwise it uses the current working directory. Buffers are kept around between toggles, so hiding the Pi area doesn't kill any `pi` sessions. Closing an individual pane with `<C-x>` stops that pane's job; exiting Neovim stops all live jobs.
 
 ## License
 
