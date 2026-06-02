@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inactive Pi panes now follow their output: when a non-focused session emits
   new lines it scrolls to the bottom instead of jumping to the top. The focused
   pane keeps its browsing-view behaviour so scrolling back to read is preserved.
+- Streaming output no longer auto-scrolls when browsing in normal mode: the
+  cursor stays where you are instead of jumping to follow new output.
 
 ### Added
 

@@ -560,6 +560,11 @@ local function setup_session_autocmds(session)
         if vim.api.nvim_get_current_win() == session.win then
           if session.view then
             restore_browsing_view(session)
+          elseif not in_terminal_mode() then
+            -- In normal mode: don't auto-scroll, stay where the cursor is
+          else
+            -- In terminal mode: follow new output
+            follow_output(session)
           end
         else
           follow_output(session)
