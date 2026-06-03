@@ -16,6 +16,7 @@ local defaults = {
   pane_gap = 1,
   keymap = "<C-,>",
   abort_keymap = "<C-c>",
+  new_session_keymap = "<C-l>",
 }
 
 M.config = vim.deepcopy(defaults)
@@ -548,6 +549,16 @@ local function setup_session_keymaps(session)
         vim.api.nvim_chan_send(session.job, "\27")
       end
     end, vim.tbl_extend("force", opts, { desc = "Pi: abort current run" }))
+  end
+
+  -- Map a configurable key to send /new to Pi so you can start a fresh session
+  -- without leaving terminal mode or typing the slash command manually.
+  if M.config.new_session_keymap and M.config.new_session_keymap ~= "" then
+    vim.keymap.set("t", M.config.new_session_keymap, function()
+      if session.job then
+        vim.api.nvim_chan_send(session.job, "/new\n")
+      end
+    end, vim.tbl_extend("force", opts, { desc = "Pi: new session" }))
   end
 end
 

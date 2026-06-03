@@ -103,6 +103,10 @@ Splits preserve the current session and open a new Pi session in the new pane. L
 
 Pi normally cancels the current generation with `<Esc>`, but `<Esc>` is overloaded in Neovim (leaving terminal mode, dismissing popups, etc.). Inside the agent buffer, `<C-c>` is mapped to send `<Esc>` to Pi so you can abort a run without leaving terminal mode. Change it via `abort_keymap`, or set it to `false` / `""` to disable.
 
+### Starting a new session
+
+Inside the agent buffer, `<C-l>` sends `/new` to Pi so you can start a fresh session without typing the slash command manually. Change it via `new_session_keymap`, or set it to `false` / `""` to disable.
+
 ## How it works
 
 When you create a Pi session, the plugin runs `git -C <cwd> rev-parse --show-toplevel`. If that succeeds, the floating terminal is launched in the repo root; otherwise it uses the current working directory. Buffers are kept around between toggles, so hiding the Pi area doesn't kill any `pi` sessions. Closing an individual pane with `<C-x>` stops that pane's job; exiting Neovim stops all live jobs.
