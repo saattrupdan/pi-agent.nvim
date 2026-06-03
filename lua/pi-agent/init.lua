@@ -556,7 +556,7 @@ local function setup_session_keymaps(session)
   if M.config.new_session_keymap and M.config.new_session_keymap ~= "" then
     vim.keymap.set("t", M.config.new_session_keymap, function()
       if session.job then
-        vim.api.nvim_chan_send(session.job, "/new\n")
+        vim.api.nvim_chan_send(session.job, "/new\r")
       end
     end, vim.tbl_extend("force", opts, { desc = "Pi: new session" }))
   end
