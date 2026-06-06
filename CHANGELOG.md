@@ -23,8 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `<C-l>` sends `/new` to start a fresh session without leaving terminal mode.
-  Configurable via `new_session_keymap`.
+- `<C-l>` now asks for confirmation before sending `/new` to start a fresh
+  session, preventing accidental resets. Configurable via `new_session_keymap`.
 - `pane_gap` configures empty cells between tiled Pi panes, defaulting to one
   cell so active borders do not overlap adjacent panes.
 - Floating Pi area now supports multiple live terminal sessions in tiled panes:

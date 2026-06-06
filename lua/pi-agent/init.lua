@@ -580,11 +580,17 @@ local function setup_session_keymaps(session)
 
   -- Map a configurable key to send /new to Pi so you can start a fresh session
   -- without leaving terminal mode or typing the slash command manually.
+  -- Asks for confirmation before resetting.
   if M.config.new_session_keymap and M.config.new_session_keymap ~= "" then
     vim.keymap.set("t", M.config.new_session_keymap, function()
-      if session.job then
-        vim.api.nvim_chan_send(session.job, "/new\r")
+      if not session.job then
+        return
       end
+      -- One-keystroke confirmation: <y> resets, anything else cancels.
+      if vim.fn.confirm("Reset this Pi session?", "&Yes\n&No", 2) ~= 1 then
+        return
+      end
+      vim.api.nvim_chan_send(session.job, "/new\r")
     end, vim.tbl_extend("force", opts, { desc = "Pi: new session" }))
   end
 end
