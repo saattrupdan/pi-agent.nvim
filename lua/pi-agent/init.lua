@@ -26,6 +26,9 @@ local ACTIVE_TITLE = "PiAgentActiveTitle"
 local ACTIVE_BG = "PiAgentActiveBg"
 local INACTIVE_BG = "PiAgentInactiveBg"
 local CELL_ASPECT_RATIO = 2.2
+local HAS_WINBLEN = pcall(function()
+  vim.api.nvim_get_option_value("winblend", {})
+end)
 
 local function git_root(start_dir)
   local result = vim.fn.systemlist({ "git", "-C", start_dir, "rev-parse", "--show-toplevel" })
@@ -300,10 +303,14 @@ local function update_active_marker()
       vim.wo[session.win].winhighlight = active
           and "FloatBorder:" .. ACTIVE_BORDER .. ",FloatTitle:" .. ACTIVE_TITLE .. ",Normal:" .. ACTIVE_BG
         or "FloatBorder:" .. ACTIVE_BORDER .. ",FloatTitle:" .. ACTIVE_TITLE .. ",Normal:" .. INACTIVE_BG
-      vim.wo[session.win].winblen = active and 0 or 30
+      if HAS_WINBLEN then
+        vim.wo[session.win].winblend = active and 0 or 30
+      end
     else
       vim.wo[session.win].winhighlight = ""
-      vim.wo[session.win].winblen = 0
+      if HAS_WINBLEN then
+        vim.wo[session.win].winblend = 0
+      end
     end
   end)
 end
