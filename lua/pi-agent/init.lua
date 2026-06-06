@@ -245,7 +245,7 @@ local function rects_for_layout(node, rect, rects)
 end
 
 local function window_config(rect, id, active)
-  return {
+  local config = {
     relative = "editor",
     width = rect.width,
     height = rect.height,
@@ -253,9 +253,12 @@ local function window_config(rect, id, active)
     col = rect.col,
     style = "minimal",
     border = active and M.config.border or "none",
-    title = active and string.format(" pi-agent %d ● ", id) or nil,
-    title_pos = "center",
   }
+  if active then
+    config.title = string.format(" pi-agent %d ● ", id)
+    config.title_pos = "center"
+  end
+  return config
 end
 
 local function split_direction(rect)
