@@ -244,6 +244,17 @@ local function rects_for_layout(node, rect, rects)
   return rects
 end
 
+local INACTIVE_BORDER = {
+  { " ", "NormalNC" },
+  { " ", "NormalNC" },
+  { " ", "NormalNC" },
+  { " ", "NormalNC" },
+  { " ", "NormalNC" },
+  { " ", "NormalNC" },
+  { " ", "NormalNC" },
+  { " ", "NormalNC" },
+}
+
 local function window_config(rect, id, active)
   local config = {
     relative = "editor",
@@ -252,7 +263,7 @@ local function window_config(rect, id, active)
     row = rect.row,
     col = rect.col,
     style = "minimal",
-    border = active and M.config.border or "none",
+    border = active and M.config.border or INACTIVE_BORDER,
   }
   if active then
     config.title = string.format(" pi-agent %d ● ", id)
