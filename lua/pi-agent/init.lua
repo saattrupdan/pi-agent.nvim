@@ -252,8 +252,8 @@ local function window_config(rect, id, active)
     row = rect.row,
     col = rect.col,
     style = "minimal",
-    border = M.config.border,
-    title = active and string.format(" pi-agent %d ● ", id) or string.format(" pi-agent %d ", id),
+    border = active and M.config.border or "none",
+    title = active and string.format(" pi-agent %d ● ", id) or nil,
     title_pos = "center",
   }
 end
