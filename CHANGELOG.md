@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Active Pi pane now has a distinct background colour and inactive panes are
+  slightly transparent, making the focused session more prominent in split view.
+
 ### Fixed
 
 - Inactive Pi panes now follow their output: when a non-focused session emits
