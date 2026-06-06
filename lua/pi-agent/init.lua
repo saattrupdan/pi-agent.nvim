@@ -245,12 +245,6 @@ local function rects_for_layout(node, rect, rects)
 end
 
 local function window_config(rect, id, active)
-  local border_style
-  if active then
-    border_style = "double"
-  else
-    border_style = "shadow"
-  end
   return {
     relative = "editor",
     width = rect.width,
@@ -258,7 +252,7 @@ local function window_config(rect, id, active)
     row = rect.row,
     col = rect.col,
     style = "minimal",
-    border = border_style,
+    border = M.config.border,
     title = active and string.format(" pi-agent %d ● ", id) or string.format(" pi-agent %d ", id),
     title_pos = "center",
   }
@@ -300,8 +294,7 @@ local function update_active_marker()
       return
     end
 
-    local always_show_border = true
-    local active = multiple_sessions and id == state.current_id or always_show_border
+    local active = id == state.current_id
     local rect = rects[id] or pane_area()
     vim.api.nvim_win_set_config(session.win, window_config(rect, id, active))
     if multiple_sessions then
