@@ -586,8 +586,8 @@ local function setup_session_keymaps(session)
       if not session.job then
         return
       end
-      -- One-keystroke confirmation: <y> resets, anything else cancels.
-      if vim.fn.confirm("Reset this Pi session?", "&Yes\n&No", 2) ~= 1 then
+      -- One-keystroke confirmation: <y> resets (default), anything else cancels.
+      if vim.fn.confirm("Reset this Pi session?", "&Yes\n&No", 1) ~= 1 then
         return
       end
       vim.api.nvim_chan_send(session.job, "/new\r")
