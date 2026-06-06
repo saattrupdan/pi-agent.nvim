@@ -23,8 +23,6 @@ M.config = vim.deepcopy(defaults)
 
 local ACTIVE_BORDER = "PiAgentActiveBorder"
 local ACTIVE_TITLE = "PiAgentActiveTitle"
-local ACTIVE_BG = "PiAgentActiveBg"
-local INACTIVE_BG = "PiAgentInactiveBg"
 local CELL_ASPECT_RATIO = 2.2
 local HAS_WINBLEN = pcall(function()
   vim.api.nvim_get_option_value("winblend", {})
@@ -301,10 +299,10 @@ local function update_active_marker()
     vim.api.nvim_win_set_config(session.win, window_config(rect, id, active))
     if mark_active then
       vim.wo[session.win].winhighlight = active
-          and "FloatBorder:" .. ACTIVE_BORDER .. ",FloatTitle:" .. ACTIVE_TITLE .. ",Normal:" .. ACTIVE_BG
-        or "FloatBorder:" .. ACTIVE_BORDER .. ",FloatTitle:" .. ACTIVE_TITLE .. ",Normal:" .. INACTIVE_BG
+          and "FloatBorder:" .. ACTIVE_BORDER .. ",FloatTitle:" .. ACTIVE_TITLE
+        or ""
       if HAS_WINBLEN then
-        vim.wo[session.win].winblend = active and 0 or 30
+        vim.wo[session.win].winblend = active and 0 or 40
       end
     else
       vim.wo[session.win].winhighlight = ""
@@ -871,8 +869,6 @@ function M.setup(opts)
 
   vim.api.nvim_set_hl(0, ACTIVE_BORDER, { default = true, link = "DiagnosticInfo" })
   vim.api.nvim_set_hl(0, ACTIVE_TITLE, { default = true, link = "DiagnosticInfo" })
-  vim.api.nvim_set_hl(0, ACTIVE_BG, { default = true, bg = "#1e3a5f" })
-  vim.api.nvim_set_hl(0, INACTIVE_BG, { default = true, bg = "#0f1f2f" })
 
   vim.api.nvim_create_user_command("PiAgent", M.toggle, {})
   vim.api.nvim_create_user_command("PiAgentOpen", M.open, {})
