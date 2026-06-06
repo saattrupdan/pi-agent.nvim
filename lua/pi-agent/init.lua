@@ -245,6 +245,12 @@ local function rects_for_layout(node, rect, rects)
 end
 
 local function window_config(rect, id, active)
+  local border_style
+  if active then
+    border_style = "double"
+  else
+    border_style = "shadow"
+  end
   return {
     relative = "editor",
     width = rect.width,
@@ -252,7 +258,7 @@ local function window_config(rect, id, active)
     row = rect.row,
     col = rect.col,
     style = "minimal",
-    border = M.config.border,
+    border = border_style,
     title = active and string.format(" pi-agent %d ● ", id) or string.format(" pi-agent %d ", id),
     title_pos = "center",
   }
@@ -302,7 +308,7 @@ local function update_active_marker()
           and "FloatBorder:" .. ACTIVE_BORDER .. ",FloatTitle:" .. ACTIVE_TITLE
         or ""
       if HAS_WINBLEN then
-        vim.wo[session.win].winblend = active and 0 or 40
+        vim.wo[session.win].winblend = active and 0 or 55
       end
     else
       vim.wo[session.win].winhighlight = ""
