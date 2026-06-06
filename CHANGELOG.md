@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pane layout when Neovim is resized.
 - Terminal buffer no longer forces insert mode on open — vim commands work
   immediately. Press `<CR>` in terminal mode to return to insert mode.
+- Closed pane confirmation (`<C-x>`) now defaults to Yes (press `<Enter>` to
+  confirm) instead of No.
 
 ### Fixed
 

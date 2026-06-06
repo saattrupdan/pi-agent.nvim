@@ -867,8 +867,8 @@ function M.close_pane()
     return
   end
 
-  -- One-keystroke confirmation: <y> closes, anything else cancels.
-  if vim.fn.confirm("Close this Pi pane?", "&Yes\n&No", 2) ~= 1 then
+  -- One-keystroke confirmation: <y> closes (default), anything else cancels.
+  if vim.fn.confirm("Close this Pi pane?", "&Yes\n&No", 1) ~= 1 then
     if was_terminal then
       vim.cmd("startinsert")
     end
