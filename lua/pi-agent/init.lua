@@ -293,17 +293,18 @@ local function layout_rects()
 end
 
 local function update_active_marker()
-  local mark_active = visible_session_count() > 1
+  local multiple_sessions = visible_session_count() > 1
   local rects = layout_rects()
   each_session(function(session, id)
     if not is_valid_win(session.win) then
       return
     end
 
-    local active = mark_active and id == state.current_id
+    local always_show_border = true
+    local active = multiple_sessions and id == state.current_id or always_show_border
     local rect = rects[id] or pane_area()
     vim.api.nvim_win_set_config(session.win, window_config(rect, id, active))
-    if mark_active then
+    if multiple_sessions then
       vim.wo[session.win].winhighlight = active
           and "FloatBorder:" .. ACTIVE_BORDER .. ",FloatTitle:" .. ACTIVE_TITLE
         or ""
@@ -311,7 +312,7 @@ local function update_active_marker()
         vim.wo[session.win].winblend = active and 0 or 55
       end
     else
-      vim.wo[session.win].winhighlight = ""
+      vim.wo[session.win].winhighlight = "FloatBorder:" .. ACTIVE_BORDER .. ",FloatTitle:" .. ACTIVE_TITLE
       if HAS_WINBLEN then
         vim.wo[session.win].winblend = 0
       end
