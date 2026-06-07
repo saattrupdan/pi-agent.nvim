@@ -2,6 +2,8 @@
 
 A tiny Neovim plugin that opens your [Pi](https://github.com/) agent in a centered floating window, rooted at the current git repo (or `cwd` if there's no git worktree).
 
+![Pi agent running in Neovim](media/pi-nvim-plugin.png)
+
 ## Features
 
 - Floating Pi area, 80% × 80% of the editor by default, that recenters and resizes with Neovim
@@ -9,8 +11,6 @@ A tiny Neovim plugin that opens your [Pi](https://github.com/) agent in a center
 - Multiple Pi terminal sessions in tiled floating panes
 - Toggle in and out — all `pi` sessions persist across toggles until you close their pane or exit Pi
 - Configurable size, border, and command
-
-![Pi agent running in Neovim](media/pi-nvim-plugin.png)
 
 ## Requirements
 
