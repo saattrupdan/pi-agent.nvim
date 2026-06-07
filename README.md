@@ -10,6 +10,8 @@ A tiny Neovim plugin that opens your [Pi](https://github.com/) agent in a center
 - Toggle in and out — all `pi` sessions persist across toggles until you close their pane or exit Pi
 - Configurable size, border, and command
 
+![Pi agent running in Neovim](media/pi-nvim-plugin.png)
+
 ## Requirements
 
 - Neovim 0.9+
