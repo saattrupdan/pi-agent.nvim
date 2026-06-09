@@ -791,6 +791,32 @@ local function setup_session_autocmds(session)
   })
 end
 
+--- Poll Pi's session file for the conversation name and refresh the title.
+-- Pi generates the name asynchronously (a model call a few seconds after the
+-- first message), so it is usually absent when the session is created and there
+-- is no layout event to trigger a re-read. Poll until it appears, then update
+-- the window title and stop. Gives up after ~60s.
+-- @param session The session object
+local function start_name_poll(session)
+  local attempts = 0
+  vim.fn.timer_start(1500, function(timer)
+    attempts = attempts + 1
+    -- Stop if the session is gone, already named, or we have waited long enough.
+    if state.sessions[session.id] ~= session or session.conversation_name or attempts > 40 then
+      vim.fn.timer_stop(timer)
+      return
+    end
+
+    update_conversation_name(session, resolve_cwd())
+    if session.conversation_name then
+      if state.visible then
+        update_active_marker()
+      end
+      vim.fn.timer_stop(timer)
+    end
+  end, { ["repeat"] = -1 })
+end
+
 local function create_session()
   local id = state.next_id
   state.next_id = state.next_id + 1
@@ -832,6 +858,11 @@ local function create_session()
       end,
     })
   end)
+
+  -- The name lands asynchronously; poll for it and refresh the title.
+  if not session.conversation_name then
+    start_name_poll(session)
+  end
 
   return session
 end
