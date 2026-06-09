@@ -255,6 +255,101 @@ local INACTIVE_BORDER = {
   { " ", "NormalNC" },
 }
 
+--- Compute Pi's session directory for a given cwd.
+-- Mirrors getDefaultSessionDirPath() in pi: <agent_dir>/sessions/--<cwd>--
+-- where <agent_dir> is $PI_CODING_AGENT_DIR or ~/.pi/agent, and <cwd> has its
+-- leading separator stripped and every / \ : replaced with a dash. Pi resolves
+-- the path with path.resolve (no symlink resolution), so we leave cwd as-is.
+-- @param cwd The session working directory (absolute)
+-- @return string The absolute path to Pi's session directory for this cwd
+local function pi_session_dir(cwd)
+  local agent_dir = vim.env.PI_CODING_AGENT_DIR
+  if agent_dir and agent_dir ~= "" then
+    agent_dir = vim.fn.expand(agent_dir)
+  else
+    agent_dir = vim.fn.expand("~/.pi/agent")
+  end
+
+  local encoded = cwd:gsub("^[/\\]", "")
+  encoded = encoded:gsub("[/\\:]", "-")
+  return agent_dir .. "/sessions/--" .. encoded .. "--"
+end
+
+--- Read the latest session_info name from a Pi session .jsonl file.
+-- @param path Absolute path to the session file
+-- @return string|nil The most recent session name in the file, or nil
+local function read_session_name_from_file(path)
+  local file = io.open(path, "r")
+  if not file then
+    return nil
+  end
+
+  -- Walk lines and keep the name from the last session_info entry; an empty
+  -- name explicitly clears the title (matching pi's getSessionName()).
+  local name = nil
+  for line in file:lines() do
+    if line:find('"session_info"', 1, true) then
+      local ok, entry = pcall(vim.json.decode, line)
+      if ok and type(entry) == "table" and entry.type == "session_info" then
+        local trimmed = entry.name and vim.trim(entry.name) or ""
+        name = trimmed ~= "" and trimmed or nil
+      end
+    end
+  end
+
+  file:close()
+  return name
+end
+
+--- Try to read the session name set via pi.setSessionName().
+-- Pi persists it as a session_info entry in the per-cwd session .jsonl. We pick
+-- the newest file touched since this nvim session started (so we read THIS
+-- session, not a stale earlier one in the same cwd), then return its latest
+-- session_info name. Returns nil until pi has flushed the name to disk.
+-- @param cwd The current working directory of the session
+-- @param since The os.time() the nvim session started (ignore older files)
+-- @return string|nil The session name, or nil if not yet available
+local function read_conversation_name(cwd, since)
+  if not cwd then
+    return nil
+  end
+
+  local dir = pi_session_dir(cwd)
+  local entries = vim.fn.glob(dir .. "/*.jsonl", true, true)
+  if vim.tbl_isempty(entries) then
+    return nil
+  end
+
+  local newest, newest_time = nil, -1
+  for _, path in ipairs(entries) do
+    local ftime = vim.fn.getftime(path)
+    if ftime >= (since or 0) and ftime > newest_time then
+      newest, newest_time = path, ftime
+    end
+  end
+
+  if not newest then
+    return nil
+  end
+
+  return read_session_name_from_file(newest)
+end
+
+--- Try to update the conversation name for a session from Pi's session file.
+-- @param session The session object
+-- @param cwd The current working directory of the session
+local function update_conversation_name(session, cwd)
+  -- Skip if we already have a name (don't re-read)
+  if session.conversation_name then
+    return
+  end
+
+  local name = read_conversation_name(cwd, session.started_at)
+  if name then
+    session.conversation_name = name
+  end
+end
+
 local function window_config(rect, id, active)
   local config = {
     relative = "editor",
@@ -266,7 +361,15 @@ local function window_config(rect, id, active)
     border = active and M.config.border or INACTIVE_BORDER,
   }
   if active then
-    config.title = string.format(" pi-agent %d ● ", id)
+    local session = state.sessions[id]
+    local title = string.format(" pi-agent %d ", id)
+
+    -- Try to prepend the conversation name if available
+    if session and session.conversation_name then
+      title = string.format(" %s · %d ", session.conversation_name, id)
+    end
+
+    config.title = title
     config.title_pos = "center"
   end
   return config
@@ -699,8 +802,17 @@ local function create_session()
     job = nil,
     view = nil,
     closing = false,
+    conversation_name = nil,
+    -- Only consider Pi session files touched at or after this; avoids picking up
+    -- a stale name from an earlier session in the same cwd.
+    started_at = os.time(),
   }
   state.sessions[id] = session
+
+  -- Try to read the conversation name from Pi's session file (usually not
+  -- present yet for a brand-new session; render_layout re-reads it lazily).
+  local cwd = resolve_cwd()
+  session.conversation_name = read_conversation_name(cwd, session.started_at)
   vim.bo[session.buf].bufhidden = "hide"
 
   setup_session_keymaps(session)
@@ -742,6 +854,10 @@ render_layout = function(focus_id)
       session.win = nil
       return
     end
+
+    -- Try to update the conversation name (lazy load from file)
+    local session_cwd = resolve_cwd()
+    update_conversation_name(session, session_cwd)
 
     local config = window_config(rect, id, false)
     if is_valid_win(session.win) then
