@@ -681,20 +681,37 @@ local function setup_session_keymaps(session)
     end, vim.tbl_extend("force", opts, { desc = "Pi: abort current run" }))
   end
 
-  -- Map a configurable key to send /new to Pi so you can start a fresh session
-  -- without leaving terminal mode or typing the slash command manually.
-  -- Asks for confirmation before resetting.
+  -- Map a configurable key to reload extensions and reset the input box.
+  -- On a fresh session (splash screen with no history): just reloads to reset the input.
+  -- With conversation history: confirms before resetting with /new, then reloads extensions.
   if M.config.new_session_keymap and M.config.new_session_keymap ~= "" then
     vim.keymap.set("t", M.config.new_session_keymap, function()
       if not session.job then
         return
       end
-      -- One-keystroke confirmation: <y> resets (default), anything else cancels.
-      if vim.fn.confirm("Reset this Pi session?", "&Yes\n&No", 1) ~= 1 then
+      -- Check if there's conversation history by scanning the buffer
+      local has_history = false
+      local lines = vim.api.nvim_buf_get_lines(session.buf, 0, -1, false)
+      for _, line in ipairs(lines) do
+        -- If buffer has actual conversation content (not just splash screen), count it
+        if line:match("%S") and not line:match("^[%s│┃║─═]+$") then
+          has_history = true
+          break
+        end
+      end
+      -- Only ask for confirmation if there's actual conversation history to lose
+      if has_history and vim.fn.confirm("Reset this Pi session?", "&Yes\n&No", 1) ~= 1 then
         return
       end
-      vim.api.nvim_chan_send(session.job, "/new\r/reload\r")
-    end, vim.tbl_extend("force", opts, { desc = "Pi: new session" }))
+      -- /reload resets the input box and reloads extensions
+      -- /new is only needed if there's history to clear
+      if has_history then
+        vim.api.nvim_chan_send(session.job, "/new\r/reload\r")
+      else
+        -- On fresh splash screen: just reload to reset input, no /new needed
+        vim.api.nvim_chan_send(session.job, "/reload\r")
+      end
+    end, vim.tbl_extend("force", opts, { desc = "Pi: reload extensions" }))
   end
 end
 

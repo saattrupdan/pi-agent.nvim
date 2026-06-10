@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pane keeps its browsing-view behaviour so scrolling back to read is preserved.
 - Streaming output no longer auto-scrolls when browsing in normal mode: the
   cursor stays where you are instead of jumping to follow new output.
+- `ctrl+l` on a fresh splash screen (no conversation history) no longer shows a
+  black screen — it now just reloads extensions to reset the input box without
+  sending `/new`, preserving the splash. With history, it still confirms before
+  resetting.
 
 ### Added
 
