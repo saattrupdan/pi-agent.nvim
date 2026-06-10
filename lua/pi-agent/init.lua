@@ -339,13 +339,8 @@ end
 -- @param session The session object
 -- @param cwd The current working directory of the session
 local function update_conversation_name(session, cwd)
-  -- Skip if we already have a name (don't re-read)
-  if session.conversation_name then
-    return
-  end
-
   local name = read_conversation_name(cwd, session.started_at)
-  if name then
+  if name and name ~= session.conversation_name then
     session.conversation_name = name
   end
 end
@@ -835,9 +830,16 @@ local function start_name_poll(session)
   end, { ["repeat"] = -1 })
 end
 
-local function create_session()
+local function create_session(force_new)
   local id = state.next_id
   state.next_id = state.next_id + 1
+
+  -- Generate a unique session ID for this pane so each split has independent conversations
+  local session_uuid
+  if force_new then
+    -- Use os.time() + randomness to create a unique-ish ID
+    session_uuid = string.format("%d-%04d", os.time(), math.random(0, 9999))
+  end
 
   local session = {
     id = id,
@@ -847,6 +849,7 @@ local function create_session()
     view = nil,
     closing = false,
     conversation_name = nil,
+    session_uuid = session_uuid,
     -- Only consider Pi session files touched at or after this; avoids picking up
     -- a stale name from an earlier session in the same cwd.
     started_at = os.time(),
@@ -863,8 +866,13 @@ local function create_session()
   setup_session_autocmds(session)
 
   local cwd = resolve_cwd()
+  -- Build the command: use --session-id for splits to ensure independent sessions
+  local cmd = M.config.command
+  if session_uuid then
+    cmd = cmd .. " --session-id " .. session_uuid
+  end
   vim.api.nvim_buf_call(session.buf, function()
-    session.job = vim.fn.termopen(M.config.command, {
+    session.job = vim.fn.termopen(cmd, {
       cwd = cwd,
       on_exit = function()
         vim.schedule(function()
@@ -1005,7 +1013,7 @@ function M.split()
   end
 
   local split = contextual_split_direction(id, rect)
-  local session = create_session()
+  local session = create_session(true)  -- force new session for split pane
   local replacement = {
     split = split,
     first = { id = id },

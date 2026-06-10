@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Each split pane now has an independent Pi session with its own conversation
+  title, instead of all panes sharing the same session name.
 - Inactive Pi panes now follow their output: when a non-focused session emits
   new lines it scrolls to the bottom instead of jumping to the top. The focused
   pane keeps its browsing-view behaviour so scrolling back to read is preserved.
