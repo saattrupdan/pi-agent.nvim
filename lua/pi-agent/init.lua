@@ -693,7 +693,7 @@ local function setup_session_keymaps(session)
       if vim.fn.confirm("Reset this Pi session?", "&Yes\n&No", 1) ~= 1 then
         return
       end
-      vim.api.nvim_chan_send(session.job, "/new\r")
+      vim.api.nvim_chan_send(session.job, "/new\r/reload\r")
     end, vim.tbl_extend("force", opts, { desc = "Pi: new session" }))
   end
 end
