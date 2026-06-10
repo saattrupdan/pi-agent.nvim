@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   black screen — it now just reloads extensions to reset the input box without
   sending `/new`, preserving the splash. With history, it still confirms before
   resetting.
+- Pressing `V` (shift+v) now uses line-wise visual mode instead of character-wise,
+  so extending the selection with `k`/`j` selects whole lines rather than a
+  column-bounded range.
 
 ### Added
 

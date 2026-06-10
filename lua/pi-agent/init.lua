@@ -647,10 +647,11 @@ local function setup_session_keymaps(session)
   end
 
   -- Terminal lines are padded with trailing spaces to the window width, so
-  -- linewise visual would highlight all that padding. Remap V to a charwise
-  -- select from column 0 to the last non-blank, and remap $ in visual mode to
-  -- g_ so extending a selection also stops at text.
-  vim.keymap.set("n", "V", "0vg_", opts)
+  -- linewise visual would highlight all that padding. Remap V to select from
+  -- column 0 to the last non-blank in line-wise mode (so extending with k/j
+  -- keeps whole-line selection), and remap $ in visual mode to g_ so extending
+  -- a selection also stops at text.
+  vim.keymap.set("n", "V", "0Vg_", opts)
   vim.keymap.set("x", "$", "g_", opts)
 
   vim.keymap.set({ "n", "t" }, "<C-s>", function()
