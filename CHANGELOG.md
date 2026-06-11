@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Each split pane now has its conversation name shown in the title — inactive
+  panes now display the session title correctly instead of showing a generic
+  title.
 - Each split pane now has an independent Pi session with its own conversation
   title, instead of all panes sharing the same session name.
 - Inactive Pi panes now follow their output: when a non-focused session emits

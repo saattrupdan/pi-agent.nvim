@@ -346,6 +346,7 @@ local function update_conversation_name(session, cwd)
 end
 
 local function window_config(rect, id, active)
+  local session = state.sessions[id]
   local config = {
     relative = "editor",
     width = rect.width,
@@ -354,19 +355,16 @@ local function window_config(rect, id, active)
     col = rect.col,
     style = "minimal",
     border = active and M.config.border or INACTIVE_BORDER,
+    title_pos = "center",
   }
-  if active then
-    local session = state.sessions[id]
-    local title = string.format(" pi-agent %d ", id)
 
-    -- Try to prepend the conversation name if available
-    if session and session.conversation_name then
-      title = string.format(" %s · %d ", session.conversation_name, id)
-    end
-
-    config.title = title
-    config.title_pos = "center"
+  -- Set title for all panes, not just the active one
+  local title = string.format("pi-agent %d", id)
+  if session and session.conversation_name then
+    title = string.format("%s · %d", session.conversation_name, id)
   end
+  config.title = title
+
   return config
 end
 
