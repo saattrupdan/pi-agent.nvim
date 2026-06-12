@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Buffer name now syncs with the conversation name, so `:ls` and bufferline
+  plugins show the session title instead of a generic name.
 - Each split pane now has its conversation name shown in the title — inactive
   panes now display the session title correctly instead of showing a generic
   title.

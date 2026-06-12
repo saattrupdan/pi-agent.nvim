@@ -342,6 +342,10 @@ local function update_conversation_name(session, cwd)
   local name = read_conversation_name(cwd, session.started_at)
   if name and name ~= session.conversation_name then
     session.conversation_name = name
+    -- Also update the buffer name so it matches the window title
+    if is_valid_buf(session.buf) then
+      vim.api.nvim_buf_set_name(session.buf, string.format("pi-agent: %s", name))
+    end
   end
 end
 
@@ -858,6 +862,9 @@ local function create_session(force_new)
   -- present yet for a brand-new session; render_layout re-reads it lazily).
   local cwd = resolve_cwd()
   session.conversation_name = read_conversation_name(cwd, session.started_at)
+  if session.conversation_name then
+    vim.api.nvim_buf_set_name(session.buf, string.format("pi-agent: %s", session.conversation_name))
+  end
   vim.bo[session.buf].bufhidden = "hide"
 
   setup_session_keymaps(session)
