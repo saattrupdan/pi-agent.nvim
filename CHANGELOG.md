@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Buffer name collision error (`E95: Buffer with this name already exists`) when
+  toggling with multiple split panes — buffer names now include the session ID
+  to guarantee uniqueness.
 - Buffer name now syncs with the conversation name, so `:ls` and bufferline
   plugins show the session title instead of a generic name.
 - Each split pane now has its conversation name shown in the title — inactive

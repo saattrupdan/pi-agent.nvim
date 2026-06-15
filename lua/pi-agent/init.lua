@@ -344,7 +344,7 @@ local function update_conversation_name(session, cwd)
     session.conversation_name = name
     -- Also update the buffer name so it matches the window title
     if is_valid_buf(session.buf) then
-      vim.api.nvim_buf_set_name(session.buf, string.format("pi-agent: %s", name))
+      vim.api.nvim_buf_set_name(session.buf, string.format("pi-agent: %s (%d)", name, session.id))
     end
   end
 end
@@ -863,7 +863,7 @@ local function create_session(force_new)
   local cwd = resolve_cwd()
   session.conversation_name = read_conversation_name(cwd, session.started_at)
   if session.conversation_name then
-    vim.api.nvim_buf_set_name(session.buf, string.format("pi-agent: %s", session.conversation_name))
+    vim.api.nvim_buf_set_name(session.buf, string.format("pi-agent: %s (%d)", session.conversation_name, id))
   end
   vim.bo[session.buf].bufhidden = "hide"
 
