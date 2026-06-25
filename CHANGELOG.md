@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `keymap`, `abort_keymap`, and `new_session_keymap` now accept a table of
+  strings in addition to a single string, allowing multiple keybindings — e.g.
+  `{ "<C-,>", "<leader>cc" }` for tmux-compatible local + leader bindings.
+
 - Active Pi pane now has a distinct background colour and inactive panes are
   slightly transparent (Neovim 0.10+), making the focused session more prominent
   in split view.

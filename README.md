@@ -52,8 +52,8 @@ require("pi-agent").setup({
   height  = 0.8,       -- fraction of editor height
   border  = "rounded", -- any value accepted by nvim_open_win
   pane_gap = 1,         -- empty cells between split panes (0 disables)
-  keymap  = "<C-,>",   -- toggle keymap (set to false or "" to disable)
-  abort_keymap = "<C-c>", -- terminal-mode keymap that aborts the current Pi run (set to false or "" to disable)
+  keymap  = "<C-,>",   -- toggle keymap (string or table of strings; set to false or "" to disable)
+  abort_keymap = "<C-c>", -- terminal-mode keymap that aborts the current Pi run (string or table; set to false or "" to disable)
 })
 ```
 
@@ -68,6 +68,14 @@ require("pi-agent").setup({ keymap = "<leader>pi" })
 ```
 
 Any string accepted by `vim.keymap.set` works here — for example `"<leader>p"`, `"<F4>"`, or `"<C-g>p"`.
+
+To bind multiple keymaps (e.g. keep `<C-,>` for local use and add `<leader>cc` for tmux compatibility):
+
+```lua
+require("pi-agent").setup({
+  keymap = { "<C-,>", "<leader>cc" }
+})
+```
 
 To disable the built-in keymap and define your own:
 

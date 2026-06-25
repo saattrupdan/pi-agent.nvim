@@ -669,21 +669,38 @@ local function setup_session_keymaps(session)
     navigate_pane("w")
   end, vim.tbl_extend("force", opts, { desc = "Pi: cycle panes" }))
 
-  -- Map a configurable key to <Esc> so it aborts the current Pi run (Pi's
+  -- Map configurable key(s) to <Esc> so it aborts the current Pi run (Pi's
   -- normal cancel key) without colliding with <Esc> usage elsewhere in Neovim.
-  if M.config.abort_keymap and M.config.abort_keymap ~= "" then
-    vim.keymap.set("t", M.config.abort_keymap, function()
-      if session.job then
-        vim.api.nvim_chan_send(session.job, "\27")
-      end
-    end, vim.tbl_extend("force", opts, { desc = "Pi: abort current run" }))
+  local abort_keymaps = M.config.abort_keymap
+  if type(abort_keymaps) == "string" then
+    abort_keymaps = { abort_keymaps }
+  elseif type(abort_keymaps) ~= "table" then
+    abort_keymaps = {}
   end
 
-  -- Map a configurable key to reload extensions and reset the input box.
+  for _, km in ipairs(abort_keymaps) do
+    if km and km ~= "" then
+      vim.keymap.set("t", km, function()
+        if session.job then
+          vim.api.nvim_chan_send(session.job, "\27")
+        end
+      end, vim.tbl_extend("force", opts, { desc = "Pi: abort current run" }))
+    end
+  end
+
+  -- Map configurable key(s) to reload extensions and reset the input box.
   -- On a fresh session (splash screen with no history): just reloads to reset the input.
   -- With conversation history: confirms before resetting with /new, then reloads extensions.
-  if M.config.new_session_keymap and M.config.new_session_keymap ~= "" then
-    vim.keymap.set("t", M.config.new_session_keymap, function()
+  local new_session_keymaps = M.config.new_session_keymap
+  if type(new_session_keymaps) == "string" then
+    new_session_keymaps = { new_session_keymaps }
+  elseif type(new_session_keymaps) ~= "table" then
+    new_session_keymaps = {}
+  end
+
+  for _, km in ipairs(new_session_keymaps) do
+    if km and km ~= "" then
+      vim.keymap.set("t", km, function()
       if not session.job then
         return
       end
@@ -710,6 +727,7 @@ local function setup_session_keymaps(session)
         vim.api.nvim_chan_send(session.job, "/reload\r")
       end
     end, vim.tbl_extend("force", opts, { desc = "Pi: reload extensions" }))
+    end
   end
 end
 
@@ -1120,12 +1138,22 @@ function M.setup(opts)
     end,
   })
 
-  if M.config.keymap and M.config.keymap ~= "" then
-    vim.keymap.set("n", M.config.keymap, M.toggle, { desc = "Toggle Pi agent" })
-    vim.keymap.set("t", M.config.keymap, function()
-      vim.cmd("stopinsert")
-      M.toggle()
-    end, { desc = "Toggle Pi agent" })
+  -- Support single keymap or table of keymaps
+  local keymaps = M.config.keymap
+  if type(keymaps) == "string" then
+    keymaps = { keymaps }
+  elseif type(keymaps) ~= "table" then
+    keymaps = {}
+  end
+
+  for _, km in ipairs(keymaps) do
+    if km and km ~= "" then
+      vim.keymap.set("n", km, M.toggle, { desc = "Toggle Pi agent" })
+      vim.keymap.set("t", km, function()
+        vim.cmd("stopinsert")
+        M.toggle()
+      end, { desc = "Toggle Pi agent" })
+    end
   end
 end
 
