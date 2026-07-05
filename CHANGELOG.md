@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Floating window height reduced by 1 line to give the Pi footer breathing room at the bottom.
 - Buffer name collision error (`E95: Buffer with this name already exists`) when
   toggling with multiple split panes — buffer names now include the session ID
   to guarantee uniqueness.
