@@ -354,7 +354,7 @@ local function window_config(rect, id, active)
   local config = {
     relative = "editor",
     width = rect.width,
-    height = rect.height - 1, -- Subtract 1 line to give the Pi footer breathing room
+    height = rect.height,
     row = rect.row,
     col = rect.col,
     style = "minimal",
