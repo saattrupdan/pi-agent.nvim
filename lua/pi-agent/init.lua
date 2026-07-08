@@ -301,23 +301,35 @@ local function read_session_name_from_file(path)
   return name
 end
 
---- Try to read the session name set via pi.setSessionName().
--- Pi persists it as a session_info entry in the per-cwd session .jsonl. We pick
--- the newest file touched since this nvim session started (so we read THIS
--- session, not a stale earlier one in the same cwd), then return its latest
--- session_info name. Returns nil until pi has flushed the name to disk.
--- @param cwd The current working directory of the session
--- @param since The os.time() the nvim session started (ignore older files)
--- @return string|nil The session name, or nil if not yet available
-local function read_conversation_name(cwd, since)
+local function new_session_id(id)
+  local hrtime = vim.loop and vim.loop.hrtime and tostring(vim.loop.hrtime()) or ""
+  local raw = string.format(
+    "nvim-%d-%s-%d-%06d",
+    os.time(),
+    hrtime,
+    id,
+    math.random(0, 999999)
+  )
+  return raw:gsub("[^A-Za-z0-9._-]", "-")
+end
+
+local function find_session_file(cwd, since, session_id, known_path)
   if not cwd then
-    return nil
+    return nil, nil, nil
+  end
+
+  if known_path and vim.fn.filereadable(known_path) == 1 then
+    local ftime = vim.fn.getftime(known_path)
+    if ftime >= (since or 0) then
+      return known_path, ftime, vim.fn.getfsize(known_path)
+    end
   end
 
   local dir = pi_session_dir(cwd)
-  local entries = vim.fn.glob(dir .. "/*.jsonl", true, true)
+  local pattern = session_id and ("/*_" .. session_id .. ".jsonl") or "/*.jsonl"
+  local entries = vim.fn.glob(dir .. pattern, true, true)
   if vim.tbl_isempty(entries) then
-    return nil
+    return nil, nil, nil
   end
 
   local newest, newest_time = nil, -1
@@ -328,25 +340,55 @@ local function read_conversation_name(cwd, since)
     end
   end
 
-  if not newest then
-    return nil
-  end
+  return newest, newest_time, newest and vim.fn.getfsize(newest) or nil
+end
 
-  return read_session_name_from_file(newest)
+local function session_title(session)
+  if session and session.conversation_name then
+    return string.format("%s · %d", session.conversation_name, session.id)
+  end
+  return string.format("pi-agent %d", session.id)
+end
+
+local function rename_session_buffer(session)
+  if is_valid_buf(session.buf) then
+    vim.api.nvim_buf_set_name(session.buf, "pi-agent: " .. session_title(session))
+  end
 end
 
 --- Try to update the conversation name for a session from Pi's session file.
 -- @param session The session object
 -- @param cwd The current working directory of the session
+-- @return boolean True when the visible title changed.
 local function update_conversation_name(session, cwd)
-  local name = read_conversation_name(cwd, session.started_at)
-  if name and name ~= session.conversation_name then
-    session.conversation_name = name
-    -- Also update the buffer name so it matches the window title
-    if is_valid_buf(session.buf) then
-      vim.api.nvim_buf_set_name(session.buf, string.format("pi-agent: %s (%d)", name, session.id))
-    end
+  local path, mtime, size = find_session_file(
+    cwd,
+    session.started_at,
+    session.session_id,
+    session.session_file
+  )
+  if not path then
+    return false
   end
+
+  if path == session.session_file
+      and mtime == session.session_mtime
+      and size == session.session_size then
+    return false
+  end
+
+  local name = read_session_name_from_file(path)
+  session.session_file = path
+  session.session_mtime = mtime
+  session.session_size = size
+
+  if name ~= session.conversation_name then
+    session.conversation_name = name
+    rename_session_buffer(session)
+    return true
+  end
+
+  return false
 end
 
 local function window_config(rect, id, active)
@@ -363,11 +405,8 @@ local function window_config(rect, id, active)
   }
 
   -- Set title for all panes, not just the active one
-  local title = string.format("pi-agent %d", id)
-  if session and session.conversation_name then
-    title = string.format("%s · %d", session.conversation_name, id)
-  end
-  config.title = title
+  config.title = session and session_title(session)
+    or string.format("pi-agent %d", id)
 
   return config
 end
@@ -824,42 +863,35 @@ local function setup_session_autocmds(session)
   })
 end
 
---- Poll Pi's session file for the conversation name and refresh the title.
--- Pi generates the name asynchronously (a model call a few seconds after the
--- first message), so it is usually absent when the session is created and there
--- is no layout event to trigger a re-read. Poll until it appears, then update
--- the window title and stop. Gives up after ~60s.
+--- Poll Pi's session file for conversation-name changes and refresh titles.
+-- Pi generates the initial name asynchronously, and `/name` can change it later
+-- without a Neovim layout event. Keep polling the pane's own session file until
+-- the pane is closed.
 -- @param session The session object
 local function start_name_poll(session)
-  local attempts = 0
-  vim.fn.timer_start(1500, function(timer)
-    attempts = attempts + 1
-    -- Stop if the session is gone, already named, or we have waited long enough.
-    if state.sessions[session.id] ~= session or session.conversation_name or attempts > 40 then
+  if session.name_timer then
+    pcall(vim.fn.timer_stop, session.name_timer)
+  end
+
+  session.name_timer = vim.fn.timer_start(1500, function(timer)
+    if state.sessions[session.id] ~= session or session.closing then
       vim.fn.timer_stop(timer)
+      if session.name_timer == timer then
+        session.name_timer = nil
+      end
       return
     end
 
-    update_conversation_name(session, resolve_cwd())
-    if session.conversation_name then
-      if state.visible then
-        update_active_marker()
-      end
-      vim.fn.timer_stop(timer)
+    if update_conversation_name(session, resolve_cwd()) and state.visible then
+      update_active_marker()
     end
   end, { ["repeat"] = -1 })
 end
 
-local function create_session(force_new)
+local function create_session()
   local id = state.next_id
   state.next_id = state.next_id + 1
-
-  -- Generate a unique session ID for this pane so each split has independent conversations
-  local session_uuid
-  if force_new then
-    -- Use os.time() + randomness to create a unique-ish ID
-    session_uuid = string.format("%d-%04d", os.time(), math.random(0, 9999))
-  end
+  local session_id = new_session_id(id)
 
   local session = {
     id = id,
@@ -869,31 +901,27 @@ local function create_session(force_new)
     view = nil,
     closing = false,
     conversation_name = nil,
-    session_uuid = session_uuid,
+    session_id = session_id,
+    session_file = nil,
+    session_mtime = nil,
+    session_size = nil,
+    name_timer = nil,
     -- Only consider Pi session files touched at or after this; avoids picking up
     -- a stale name from an earlier session in the same cwd.
     started_at = os.time(),
   }
   state.sessions[id] = session
 
-  -- Try to read the conversation name from Pi's session file (usually not
-  -- present yet for a brand-new session; render_layout re-reads it lazily).
-  local cwd = resolve_cwd()
-  session.conversation_name = read_conversation_name(cwd, session.started_at)
-  if session.conversation_name then
-    vim.api.nvim_buf_set_name(session.buf, string.format("pi-agent: %s (%d)", session.conversation_name, id))
-  end
+  rename_session_buffer(session)
   vim.bo[session.buf].bufhidden = "hide"
 
   setup_session_keymaps(session)
   setup_session_autocmds(session)
 
   local cwd = resolve_cwd()
-  -- Build the command: use --session-id for splits to ensure independent sessions
-  local cmd = M.config.command
-  if session_uuid then
-    cmd = cmd .. " --session-id " .. session_uuid
-  end
+  -- Build the command with a per-pane session ID so title polling reads the
+  -- exact JSONL file for this pane instead of whichever session was newest.
+  local cmd = M.config.command .. " --session-id " .. session_id
   vim.api.nvim_buf_call(session.buf, function()
     session.job = vim.fn.termopen(cmd, {
       cwd = cwd,
@@ -908,10 +936,8 @@ local function create_session(force_new)
     })
   end)
 
-  -- The name lands asynchronously; poll for it and refresh the title.
-  if not session.conversation_name then
-    start_name_poll(session)
-  end
+  -- The name lands asynchronously and can later change via `/name`.
+  start_name_poll(session)
 
   return session
 end
@@ -957,6 +983,10 @@ remove_session = function(id, stop_job)
   end
 
   session.closing = true
+  if session.name_timer then
+    pcall(vim.fn.timer_stop, session.name_timer)
+    session.name_timer = nil
+  end
   if is_valid_win(session.win) then
     pcall(vim.api.nvim_win_close, session.win, true)
   end
@@ -1036,7 +1066,7 @@ function M.split()
   end
 
   local split = contextual_split_direction(id, rect)
-  local session = create_session(true)  -- force new session for split pane
+  local session = create_session()
   local replacement = {
     split = split,
     first = { id = id },
@@ -1123,6 +1153,10 @@ function M.setup(opts)
     callback = function()
       each_session(function(session)
         session.closing = true
+        if session.name_timer then
+          pcall(vim.fn.timer_stop, session.name_timer)
+          session.name_timer = nil
+        end
         if session.job then
           pcall(vim.fn.jobstop, session.job)
           session.job = nil
