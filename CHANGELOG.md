@@ -70,8 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Floating Pi area now defaults to 80% × 80% of the editor and rerenders its
-  pane layout when Neovim is resized.
+- Floating Pi area now defaults to 95% × 95% of the editor (up from 80%) and
+  rerenders its pane layout when Neovim is resized.
 - Terminal buffer no longer forces insert mode on open — vim commands work
   immediately. Press `<CR>` in terminal mode to return to insert mode.
 - Closed pane confirmation (`<C-x>`) now defaults to Yes (press `<Enter>` to
