@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Pi pane titles now poll the session directory captured when each pane starts,
+  so moving between buffers or repos cannot make split panes share or lose
+  conversation names.
 - Split-pane titles now follow their own Pi session files and continue polling
   for `/name` changes, instead of reusing whichever pane wrote most recently.
 - Floating window height reduced by 1 line to give the Pi footer breathing room at the bottom.

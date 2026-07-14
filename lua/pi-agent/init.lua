@@ -256,13 +256,20 @@ local INACTIVE_BORDER = {
 }
 
 --- Compute Pi's session directory for a given cwd.
--- Mirrors getDefaultSessionDirPath() in pi: <agent_dir>/sessions/--<cwd>--
--- where <agent_dir> is $PI_CODING_AGENT_DIR or ~/.pi/agent, and <cwd> has its
--- leading separator stripped and every / \ : replaced with a dash. Pi resolves
--- the path with path.resolve (no symlink resolution), so we leave cwd as-is.
+-- Mirrors getDefaultSessionDirPath() in pi. When $PI_CODING_AGENT_SESSION_DIR is
+-- set, Pi writes sessions directly there. Otherwise it uses
+-- <agent_dir>/sessions/--<cwd>--, where <agent_dir> is $PI_CODING_AGENT_DIR or
+-- ~/.pi/agent and <cwd> has its leading separator stripped and every / \ :
+-- replaced with a dash. Pi resolves the path with path.resolve (no symlink
+-- resolution), so we leave cwd as-is.
 -- @param cwd The session working directory (absolute)
 -- @return string The absolute path to Pi's session directory for this cwd
 local function pi_session_dir(cwd)
+  local session_dir = vim.env.PI_CODING_AGENT_SESSION_DIR
+  if session_dir and session_dir ~= "" then
+    return vim.fn.expand(session_dir)
+  end
+
   local agent_dir = vim.env.PI_CODING_AGENT_DIR
   if agent_dir and agent_dir ~= "" then
     agent_dir = vim.fn.expand(agent_dir)
@@ -882,7 +889,7 @@ local function start_name_poll(session)
       return
     end
 
-    if update_conversation_name(session, resolve_cwd()) and state.visible then
+    if update_conversation_name(session, session.cwd) and state.visible then
       update_active_marker()
     end
   end, { ["repeat"] = -1 })
@@ -892,6 +899,7 @@ local function create_session()
   local id = state.next_id
   state.next_id = state.next_id + 1
   local session_id = new_session_id(id)
+  local cwd = resolve_cwd()
 
   local session = {
     id = id,
@@ -901,6 +909,7 @@ local function create_session()
     view = nil,
     closing = false,
     conversation_name = nil,
+    cwd = cwd,
     session_id = session_id,
     session_file = nil,
     session_mtime = nil,
@@ -918,7 +927,6 @@ local function create_session()
   setup_session_keymaps(session)
   setup_session_autocmds(session)
 
-  local cwd = resolve_cwd()
   -- Build the command with a per-pane session ID so title polling reads the
   -- exact JSONL file for this pane instead of whichever session was newest.
   local cmd = M.config.command .. " --session-id " .. session_id
@@ -962,8 +970,7 @@ render_layout = function(focus_id)
     end
 
     -- Try to update the conversation name (lazy load from file)
-    local session_cwd = resolve_cwd()
-    update_conversation_name(session, session_cwd)
+    update_conversation_name(session, session.cwd)
 
     local config = window_config(rect, id, false)
     if is_valid_win(session.win) then
