@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for border rows and `cmdheight`, so the visual frame (border + content) is truly
   centered within the usable editor area.
 
+- Fixed floating window centering: border extents are now derived from the
+  configured `border` value (supporting `"none"`, named borders, and custom
+  border tables); frame size is computed from usable area (excluding
+  `cmdheight`) then border is subtracted for content size; row/col are clamped
+  to valid bounds to avoid negative values for small editors.
+
 - Pi pane titles now poll the session directory captured when each pane starts,
   so moving between buffers or repos cannot make split panes share or lose
   conversation names.
