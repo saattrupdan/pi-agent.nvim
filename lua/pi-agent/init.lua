@@ -198,24 +198,47 @@ local function border_extents()
     return 1, 1, 1, 1
   end
   if type(border) == "table" then
-    -- Custom border: [top_left, top, top_right, right, bottom_right, bottom, bottom_left, left]
-    -- Each element can be a string or {char, highlight}. We count non-empty as 1 cell.
-    local function cell_height(val)
-      if not val then return 0 end
-      if type(val) == "string" then return val ~= "" and 1 or 0 end
-      if type(val) == "table" then return (val[1] or "") ~= "" and 1 or 0 end
-      return 0
+    -- Normalize border to 8 entries per Neovim's repeat semantics:
+    -- 1 entry -> repeat to all 8 sides
+    -- 4 entries -> expand corners (top, right, bottom, left -> 8 sides)
+    -- 8 entries -> use as-is
+    local normalized = {}
+    local len = #border
+    if len == 1 then
+      for i = 1, 8 do
+        normalized[i] = border[1]
+      end
+    elseif len == 4 then
+      -- CSS-style: top, right, bottom, left
+      -- Expand to 8: top_left, top, top_right, right, bottom_right, bottom, bottom_left, left
+      normalized[1] = border[1]  -- top_left = top
+      normalized[2] = border[1]  -- top
+      normalized[3] = border[2]  -- top_right = right
+      normalized[4] = border[2]  -- right
+      normalized[5] = border[3]  -- bottom_right = bottom
+      normalized[6] = border[3]  -- bottom
+      normalized[7] = border[4]  -- bottom_left = left
+      normalized[8] = border[4]  -- left
+    else
+      -- Assume 8 entries or pass through as-is
+      for i = 1, 8 do
+        normalized[i] = border[i]
+      end
     end
-    local function cell_width(val)
-      if not val then return 0 end
-      if type(val) == "string" then return math.max(0, #val) end
-      if type(val) == "table" then return math.max(0, #tostring(val[1] or "")) end
-      return 0
+
+    -- Any non-empty border char counts as 1 cell (ignore byte length for UTF-8)
+    local function is_border_char(val)
+      if not val then return false end
+      if type(val) == "string" then return val ~= "" end
+      if type(val) == "table" then return (val[1] or "") ~= "" end
+      return false
     end
-    local top = cell_height(border[2])
-    local bottom = cell_height(border[6])
-    local left = cell_width(border[8])
-    local right = cell_width(border[4])
+
+    -- 8-side format: [top_left, top, top_right, right, bottom_right, bottom, bottom_left, left]
+    local top = is_border_char(normalized[2]) and 1 or 0
+    local bottom = is_border_char(normalized[6]) and 1 or 0
+    local left = is_border_char(normalized[8]) and 1 or 0
+    local right = is_border_char(normalized[4]) and 1 or 0
     return top, bottom, left, right
   end
   -- Fallback: assume 1 cell on all sides
