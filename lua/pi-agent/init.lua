@@ -188,9 +188,27 @@ end
 local function pane_area()
   local width = math.max(1, math.floor(vim.o.columns * M.config.width))
   local height = math.max(1, math.floor(vim.o.lines * M.config.height))
+
+  -- Border thickness for centering: most borders (rounded, single, double, solid)
+  -- have 1 row top + 1 row bottom. The content area is centered within the
+  -- usable editor space (excluding cmdheight), then adjusted so the visual
+  -- frame (border + content) is truly centered.
+  local border_rows = 2
+  local border_cols = 2
+
+  -- Usable area excludes the command line at the bottom
+  local usable_lines = vim.o.lines - vim.o.cmdheight
+
+  -- Center the visual frame (content + border), then offset by half-border
+  -- so the content area lands in the right place when the border is added.
+  local total_height = height + border_rows
+  local total_width = width + border_cols
+  local row = math.floor((usable_lines - total_height) / 2)
+  local col = math.floor((vim.o.columns - total_width) / 2)
+
   return {
-    row = math.floor((vim.o.lines - height) / 2),
-    col = math.floor((vim.o.columns - width) / 2),
+    row = row,
+    col = col,
     width = width,
     height = height,
   }

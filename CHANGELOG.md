@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Corrected vertical centering of the floating pane: the calculation now accounts
+  for border rows and `cmdheight`, so the visual frame (border + content) is truly
+  centered within the usable editor area.
+
 - Pi pane titles now poll the session directory captured when each pane starts,
   so moving between buffers or repos cannot make split panes share or lose
   conversation names.
