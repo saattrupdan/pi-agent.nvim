@@ -199,28 +199,21 @@ local function border_extents()
   end
   if type(border) == "table" then
     -- Normalize border to 8 entries per Neovim's repeat semantics:
-    -- 1 entry -> repeat to all 8 sides
-    -- 4 entries -> expand corners (top, right, bottom, left -> 8 sides)
+    -- Any length that divides 8 (1, 2, or 4) is repeated modulo-style to 8 entries.
     -- 8 entries -> use as-is
     local normalized = {}
     local len = #border
-    if len == 1 then
+    if len == 8 then
       for i = 1, 8 do
-        normalized[i] = border[1]
+        normalized[i] = border[i]
       end
-    elseif len == 4 then
-      -- CSS-style: top, right, bottom, left
-      -- Expand to 8: top_left, top, top_right, right, bottom_right, bottom, bottom_left, left
-      normalized[1] = border[1]  -- top_left = top
-      normalized[2] = border[1]  -- top
-      normalized[3] = border[2]  -- top_right = right
-      normalized[4] = border[2]  -- right
-      normalized[5] = border[3]  -- bottom_right = bottom
-      normalized[6] = border[3]  -- bottom
-      normalized[7] = border[4]  -- bottom_left = left
-      normalized[8] = border[4]  -- left
+    elseif len > 0 and (8 % len == 0) then
+      -- Modulo repetition: normalized[i] = border[((i - 1) % len) + 1]
+      for i = 1, 8 do
+        normalized[i] = border[((i - 1) % len) + 1]
+      end
     else
-      -- Assume 8 entries or pass through as-is
+      -- Pass through as-is (unknown length)
       for i = 1, 8 do
         normalized[i] = border[i]
       end
