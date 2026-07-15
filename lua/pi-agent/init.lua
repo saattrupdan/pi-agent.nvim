@@ -185,26 +185,68 @@ local function is_valid_buf(buf)
   return buf and vim.api.nvim_buf_is_valid(buf)
 end
 
+--- Compute border extents from the configured border value.
+-- Returns { top, bottom, left, right } in cells.
+-- @return number top, number bottom, number left, number right
+local function border_extents()
+  local border = M.config.border
+  if border == "none" then
+    return 0, 0, 0, 0
+  end
+  if type(border) == "string" then
+    -- All named borders (single, double, rounded, solid, etc.) are 1 cell thick
+    return 1, 1, 1, 1
+  end
+  if type(border) == "table" then
+    -- Custom border: [top_left, top, top_right, right, bottom_right, bottom, bottom_left, left]
+    -- Each element can be a string or {char, highlight}. We count non-empty as 1 cell.
+    local function cell_height(val)
+      if not val then return 0 end
+      if type(val) == "string" then return val ~= "" and 1 or 0 end
+      if type(val) == "table" then return (val[1] or "") ~= "" and 1 or 0 end
+      return 0
+    end
+    local function cell_width(val)
+      if not val then return 0 end
+      if type(val) == "string" then return math.max(0, #val) end
+      if type(val) == "table" then return math.max(0, #tostring(val[1] or "")) end
+      return 0
+    end
+    local top = cell_height(border[2])
+    local bottom = cell_height(border[6])
+    local left = cell_width(border[8])
+    local right = cell_width(border[4])
+    return top, bottom, left, right
+  end
+  -- Fallback: assume 1 cell on all sides
+  return 1, 1, 1, 1
+end
+
 local function pane_area()
-  local width = math.max(1, math.floor(vim.o.columns * M.config.width))
-  local height = math.max(1, math.floor(vim.o.lines * M.config.height))
-
-  -- Border thickness for centering: most borders (rounded, single, double, solid)
-  -- have 1 row top + 1 row bottom. The content area is centered within the
-  -- usable editor space (excluding cmdheight), then adjusted so the visual
-  -- frame (border + content) is truly centered.
-  local border_rows = 2
-  local border_cols = 2
-
   -- Usable area excludes the command line at the bottom
   local usable_lines = vim.o.lines - vim.o.cmdheight
 
-  -- Center the visual frame (content + border), then offset by half-border
-  -- so the content area lands in the right place when the border is added.
-  local total_height = height + border_rows
-  local total_width = width + border_cols
-  local row = math.floor((usable_lines - total_height) / 2)
-  local col = math.floor((vim.o.columns - total_width) / 2)
+  -- Compute the total frame size (content + border) as percentage of usable area.
+  -- Round to nearest integer for better approximation of the configured percentage.
+  local frame_height = math.max(1, math.floor(usable_lines * M.config.height + 0.5))
+  local frame_width = math.max(1, math.floor(vim.o.columns * M.config.width + 0.5))
+
+  -- Derive border extents from the configured border value
+  local top, bottom, left, right = border_extents()
+  local border_rows = top + bottom
+  local border_cols = left + right
+
+  -- Content size is frame minus border
+  local height = math.max(1, frame_height - border_rows)
+  local width = math.max(1, frame_width - border_cols)
+
+  -- Center the frame within the usable area
+  local row = math.floor((usable_lines - frame_height) / 2)
+  local col = math.floor((vim.o.columns - frame_width) / 2)
+
+  -- Clamp to valid usable bounds to avoid negative values for small editors
+  row = math.max(0, row)
+  col = math.max(0, col)
 
   return {
     row = row,

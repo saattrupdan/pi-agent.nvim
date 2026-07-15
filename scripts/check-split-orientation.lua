@@ -73,10 +73,10 @@ local function run()
   -- A shallow layout keeps vertical halves landscape by aspect, so the
   -- final split must use parent context to produce a top/bottom grid.
   local expected = {
-    { col = 20, row = 24, width = 79, height = 15 },
-    { col = 20, row = 40, width = 79, height = 16 },
-    { col = 100, row = 24, width = 80, height = 15 },
-    { col = 100, row = 40, width = 80, height = 16 },
+    { col = 20, row = 23, width = 79, height = 15 },
+    { col = 20, row = 39, width = 79, height = 16 },
+    { col = 100, row = 23, width = 80, height = 15 },
+    { col = 100, row = 39, width = 80, height = 16 },
   }
 
   for index, want in ipairs(expected) do
