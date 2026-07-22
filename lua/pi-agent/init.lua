@@ -1110,10 +1110,10 @@ local function start_name_poll(session)
     pcall(vim.fn.timer_stop, session.name_timer)
   end
 
-  session.name_timer = vim.fn.timer_start(1500, function(timer)
+  local function poll()
     if state.sessions[session.id] ~= session or session.closing then
-      vim.fn.timer_stop(timer)
-      if session.name_timer == timer then
+      if session.name_timer then
+        pcall(vim.fn.timer_stop, session.name_timer)
         session.name_timer = nil
       end
       return
@@ -1122,7 +1122,19 @@ local function start_name_poll(session)
     if update_conversation_name(session, session.cwd) and state.visible then
       update_active_marker()
     end
-  end, { ["repeat"] = -1 })
+  end
+
+  -- Initial check after 500ms to catch the session file as soon as Pi creates it,
+  -- then continue polling at 1.5s intervals for `/name` changes.
+  session.name_timer = vim.fn.timer_start(500, function(timer)
+    poll()
+    -- After the first poll, reschedule at 1.5s interval
+    if session.name_timer == timer and not session.closing then
+      session.name_timer = vim.fn.timer_start(1500, function(repeat_timer)
+        poll()
+      end, { ["repeat"] = -1 })
+    end
+  end)
 end
 
 local function create_session()
