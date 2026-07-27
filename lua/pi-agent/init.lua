@@ -980,16 +980,29 @@ local function setup_session_keymaps(session)
       if not session.job then
         return
       end
-      -- Check if there's conversation history by scanning the buffer
-      local has_history = false
+      -- Decide whether this session has real conversation history (needs /new to
+      -- clear it) or is just the fresh splash screen (where /new is wasteful — its
+      -- extra session_start races the splash's screen-clear + redraw, causing the
+      -- flicker / black screen).
+      --
+      -- The splash logo is the reliable "fresh" marker: every logo row renders ≥12
+      -- full-block glyphs (█), whereas the only other █ in the UI is the footer
+      -- context bar, which is at most 10 wide. So a line with ≥12 █ means the splash
+      -- is showing and there is nothing to clear. The logo/footer would otherwise be
+      -- misread as conversation content, so we detect it explicitly and override.
+      local is_splash = false
+      local has_content = false
       local lines = vim.api.nvim_buf_get_lines(session.buf, 0, -1, false)
       for _, line in ipairs(lines) do
-        -- If buffer has actual conversation content (not just splash screen), count it
-        if line:match("%S") and not line:match("^[%s│┃║─═]+$") then
-          has_history = true
+        if select(2, line:gsub("█", "")) >= 12 then
+          is_splash = true
           break
         end
+        if line:match("%S") and not line:match("^[%s│┃║─═]+$") then
+          has_content = true
+        end
       end
+      local has_history = has_content and not is_splash
       -- Only ask for confirmation if there's actual conversation history to lose
       if has_history and vim.fn.confirm("Reset this Pi session?", "&Yes\n&No", 1) ~= 1 then
         return
