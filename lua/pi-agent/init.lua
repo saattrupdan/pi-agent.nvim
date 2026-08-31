@@ -580,6 +580,63 @@ local function find_session_file(cwd, since, session_id, known_path)
   return newest, newest_time, newest and vim.fn.getfsize(newest) or nil
 end
 
+--- Find the last occurrence of a literal substring.
+-- @param haystack String to search
+-- @param needle Literal substring
+-- @return number Index of the last occurrence, or 0 when absent
+local function last_index_of(haystack, needle)
+  local index = 0
+  while true do
+    local next_index = haystack:find(needle, index + 1, true)
+    if not next_index then
+      return index
+    end
+    index = next_index
+  end
+end
+
+--- Read the conversation name from the OSC title Pi writes to the terminal.
+-- Pi titles the terminal "<app> - <name> - <cwd>", or "<app> - <cwd>" when the
+-- session is unnamed, and refreshes it on `/name`, `/resume`, `/new` and tree
+-- forks. That makes it the only source that follows a pane across session
+-- switches — the session file the pane launched with goes stale.
+-- @param buf The pane's terminal buffer
+-- @param cwd Directory the pane launched Pi in, used to locate the trailing field
+-- @return string|nil The session name, nil when the session is unnamed
+-- @return boolean True when Pi has set a title (nil name is then authoritative)
+local function session_name_from_term_title(buf, cwd)
+  if not is_valid_buf(buf) then
+    return nil, false
+  end
+  local ok, title = pcall(vim.api.nvim_buf_get_var, buf, "term_title")
+  -- Neovim pre-fills the variable with the term:// URL until a program claims it.
+  if not ok or type(title) ~= "string" or title == "" or title:find("^term://", 1, true) == 1 then
+    return nil, false
+  end
+
+  -- Prefer dropping the trailing cwd field by exact match: a directory name
+  -- containing " - " would otherwise be read as part of the name.
+  local body
+  local base = cwd and cwd ~= "" and vim.fn.fnamemodify(cwd, ":t") or nil
+  local suffix = base and (" - " .. base) or nil
+  if suffix and title:sub(-#suffix) == suffix then
+    body = title:sub(1, -(#suffix + 1))
+  else
+    -- Either the session was resumed from another directory, or its name ends
+    -- with the separator; treat the last field as the cwd either way.
+    local last = last_index_of(title, " - ")
+    if last == 0 then
+      return nil, true
+    end
+    body = title:sub(1, last - 1)
+  end
+
+  -- Whatever is left after the app title is the conversation name.
+  local first = body:find(" - ", 1, true)
+  local name = first and vim.trim(body:sub(first + 3)) or ""
+  return name ~= "" and name or nil, true
+end
+
 local function session_title(session)
   if session and session.conversation_name then
     return string.format("%s · %d", session.conversation_name, session.id)
@@ -1113,10 +1170,31 @@ local function setup_session_autocmds(session)
   })
 end
 
---- Poll Pi's session file for conversation-name changes and refresh titles.
--- Pi generates the initial name asynchronously, and `/name` can change it later
--- without a Neovim layout event. Keep polling the pane's own session file until
--- the pane is closed.
+--- Refresh the pane's title, preferring Pi's OSC terminal title.
+-- The OSC title tracks whichever session the pane is on now, so `/resume`,
+-- `/new` and tree forks are picked up; polling the session file alone cannot,
+-- because Pi switches files on those commands and the pane's original file goes
+-- quiet. Only fall back to the session file when Pi never claimed the title.
+-- @param session The session object
+-- @return boolean True when the visible title changed.
+local function refresh_conversation_title(session)
+  local name, has_title = session_name_from_term_title(session.buf, session.cwd)
+  if has_title then
+    if name == session.conversation_name then
+      return false
+    end
+    session.conversation_name = name
+    rename_session_buffer(session)
+    return true
+  end
+
+  return update_conversation_name(session, session.cwd)
+end
+
+--- Poll Pi for conversation-name changes and refresh titles.
+-- Pi generates the initial name asynchronously, `/name` can change it later, and
+-- `/resume` swaps the underlying session file — none of which raise a Neovim
+-- layout event. Keep polling until the pane is closed.
 -- @param session The session object
 local function start_name_poll(session)
   if session.name_timer then
@@ -1132,22 +1210,14 @@ local function start_name_poll(session)
       return
     end
 
-    if update_conversation_name(session, session.cwd) and state.visible then
+    if refresh_conversation_title(session) and state.visible then
       update_active_marker()
     end
   end
 
-  -- Initial check after 500ms to catch the session file as soon as Pi creates it,
-  -- then continue polling at 1.5s intervals for `/name` changes.
-  session.name_timer = vim.fn.timer_start(500, function(timer)
-    poll()
-    -- After the first poll, reschedule at 1.5s interval
-    if session.name_timer == timer and not session.closing then
-      session.name_timer = vim.fn.timer_start(1500, function(repeat_timer)
-        poll()
-      end, { ["repeat"] = -1 })
-    end
-  end)
+  -- 500ms keeps the border title in step with `/name` and `/resume` without
+  -- being noticeable; the OSC check is a buffer lookup, no file I/O.
+  session.name_timer = vim.fn.timer_start(500, poll, { ["repeat"] = -1 })
 end
 
 local function create_session()
@@ -1228,8 +1298,8 @@ render_layout = function(focus_id)
       return
     end
 
-    -- Try to update the conversation name (lazy load from file)
-    update_conversation_name(session, session.cwd)
+    -- Try to update the conversation name (from Pi's title, else its session file)
+    refresh_conversation_title(session)
 
     local config = window_config(rect, id, false)
     if is_valid_win(session.win) then

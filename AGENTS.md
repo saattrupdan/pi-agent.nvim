@@ -26,6 +26,13 @@ There is no dev server. To exercise changes locally, point a Neovim config at th
 
 ## Gotchas
 
+- **Conversation names come from Pi's OSC terminal title, not its session file.**
+  Pi titles the terminal `π - <name> - <cwd>` (no name field when unnamed) and
+  refreshes it on `/name`, `/resume`, `/new` and tree forks; Neovim exposes it as
+  `b:term_title` on the pane buffer, which is what `refresh_conversation_title`
+  reads. The `*_nvim-<id>.jsonl` file created by our `--session-id` goes quiet as
+  soon as Pi switches sessions, so file polling is only a fallback for when Pi
+  never claims the title — never make it the primary source again.
 - **Single shared state.** `state` (buf/win/job) at the top of `init.lua` is module-level — the plugin assumes one Pi session at a time. Don't introduce a second concurrent session without rethinking it.
 - **Buffer survives toggles.** `M.close` only closes the window; the terminal buffer and `pi` job stay alive so toggling preserves the session. The buffer is deleted only on `on_exit` or `ExitPre`.
 - **`<C-,>` is terminal-dependent.** Many terminals don't transmit it as a distinct key. If a test of the default keymap "does nothing", it's the terminal, not the plugin.

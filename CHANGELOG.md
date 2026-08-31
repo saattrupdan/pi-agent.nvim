@@ -9,9 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Buffer title now updates reliably within ~500ms of session start: an initial
-  delayed check was added before the 1.5s polling interval, so the conversation
-  name from Pi's session file is picked up as soon as it's written.
+- Pane titles now follow Pi when it switches sessions — `/resume`, `/new`, and
+  tree forks update the border and buffer title to the session actually in use.
+  The name is read from the terminal title Pi sets (`π - <name> - <cwd>`), which
+  Pi refreshes on every session switch and rename; the session file the pane
+  launched with goes quiet once Pi moves on, so it is now only a fallback for
+  when Pi never claims the terminal title. Polling that file alone left the title
+  stuck on the pre-resume conversation forever.
+
+- Buffer title now updates reliably within ~500ms of session start: the title
+  poll runs every 500ms and reads a buffer variable, so it is cheap enough to
+  keep the border title in step with Pi at all times.
 
 ### Added
 
