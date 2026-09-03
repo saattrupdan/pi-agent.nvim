@@ -48,8 +48,8 @@ The defaults:
 ```lua
 require("pi-agent").setup({
   command = "pi",      -- command to run in the floating terminal
-  width   = 0.8,       -- fraction of editor width
-  height  = 0.8,       -- fraction of editor height
+  width   = 0.9,       -- fraction of editor width
+  height  = 0.9,       -- fraction of editor height
   border  = "rounded", -- any value accepted by nvim_open_win
   pane_gap = 1,         -- empty cells between split panes (0 disables)
   keymap  = "<C-,>",   -- toggle keymap (string or table of strings; set to false or "" to disable)
