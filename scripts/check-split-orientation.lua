@@ -75,8 +75,8 @@ local function run()
   local expected = {
     { col = 20, row = 23, width = 79, height = 15 },
     { col = 20, row = 39, width = 79, height = 16 },
-    { col = 100, row = 23, width = 80, height = 15 },
-    { col = 100, row = 39, width = 80, height = 16 },
+    { col = 100, row = 23, width = 90, height = 15 },
+    { col = 100, row = 39, width = 90, height = 16 },
   }
 
   for index, want in ipairs(expected) do

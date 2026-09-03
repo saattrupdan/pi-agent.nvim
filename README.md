@@ -6,7 +6,7 @@ A tiny Neovim plugin that opens your [Pi](https://github.com/) agent in a center
 
 ## Features
 
-- Floating Pi area, 80% × 80% of the editor by default, that recenters and resizes with Neovim
+- Floating Pi area, 90% × 90% of the editor by default, that recenters and resizes with Neovim
 - Automatically `cd`s each Pi session into the git root of the current buffer, falling back to `cwd`
 - Multiple Pi terminal sessions in tiled floating panes
 - Toggle in and out — all `pi` sessions persist across toggles until you close their pane or exit Pi
