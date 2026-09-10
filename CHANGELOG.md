@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `<C-l>` now reliably starts a new session after the splash screen has moved
+  into terminal scrollback, instead of misdetecting the pane as fresh and only
+  reloading extensions.
+
 - Pane titles now follow Pi when it switches sessions — `/resume`, `/new`, and
   tree forks update the border and buffer title to the session actually in use.
   The name is read from the terminal title Pi sets (`π - <name> - <cwd>`), which

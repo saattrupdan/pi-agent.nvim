@@ -1044,12 +1044,15 @@ local function setup_session_keymaps(session)
       --
       -- The splash logo is the reliable "fresh" marker: every logo row renders ≥12
       -- full-block glyphs (█), whereas the only other █ in the UI is the footer
-      -- context bar, which is at most 10 wide. So a line with ≥12 █ means the splash
-      -- is showing and there is nothing to clear. The logo/footer would otherwise be
-      -- misread as conversation content, so we detect it explicitly and override.
+      -- context bar, which is at most 10 wide. Only inspect the live terminal screen:
+      -- the initial splash remains in scrollback after a conversation starts and
+      -- would otherwise make every later reset look like a fresh session.
       local is_splash = false
       local has_content = false
-      local lines = vim.api.nvim_buf_get_lines(session.buf, 0, -1, false)
+      local line_count = vim.api.nvim_buf_line_count(session.buf)
+      local screen_height = is_valid_win(session.win) and vim.api.nvim_win_get_height(session.win) or vim.o.lines
+      local first_screen_line = math.max(0, line_count - screen_height)
+      local lines = vim.api.nvim_buf_get_lines(session.buf, first_screen_line, -1, false)
       for _, line in ipairs(lines) do
         if select(2, line:gsub("█", "")) >= 12 then
           is_splash = true
