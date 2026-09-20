@@ -139,5 +139,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   swallow Pi's detailed-tool-output toggle.
 - `ExitPre` autocmd that stops the agent job on `:wqa` / `:qa` so Neovim doesn't
   raise `E947`.
-
-[0.1.0]: https://github.com/saattrupdan/pi-agent.nvim/releases/tag/v0.1.0
