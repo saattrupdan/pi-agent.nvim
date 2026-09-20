@@ -12,11 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `<C-l>` now sends `/new` by itself for active conversations, avoiding the race
   where an immediately queued `/reload` could run while Pi was still switching
   sessions and leave the original conversation active.
-
 - `<C-l>` now reliably starts a new session after the splash screen has moved
   into terminal scrollback, instead of misdetecting the pane as fresh and only
   reloading extensions.
-
 - Pane titles now follow Pi when it switches sessions — `/resume`, `/new`, and
   tree forks update the border and buffer title to the session actually in use.
   The name is read from the terminal title Pi sets (`π - <name> - <cwd>`), which
@@ -24,7 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launched with goes quiet once Pi moves on, so it is now only a fallback for
   when Pi never claims the terminal title. Polling that file alone left the title
   stuck on the pre-resume conversation forever.
-
 - Buffer title now updates reliably within ~500ms of session start: the title
   poll runs every 500ms and reads a buffer variable, so it is cheap enough to
   keep the border title in step with Pi at all times.
@@ -34,7 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `keymap`, `abort_keymap`, and `new_session_keymap` now accept a table of
   strings in addition to a single string, allowing multiple keybindings — e.g.
   `{ "<C-,>", "<leader>cc" }` for tmux-compatible local + leader bindings.
-
 - Active Pi pane now has a distinct background colour and inactive panes are
   slightly transparent (Neovim 0.10+), making the focused session more prominent
   in split view.
@@ -44,13 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected vertical centering of the floating pane: the calculation now accounts
   for border rows and `cmdheight`, so the visual frame (border + content) is truly
   centered within the usable editor area.
-
 - Fixed floating window centering: border extents are now derived from the
   configured `border` value (supporting `"none"`, named borders, and custom
   border tables); frame size is computed from usable area (excluding
   `cmdheight`) then border is subtracted for content size; row/col are clamped
   to valid bounds to avoid negative values for small editors.
-
 - Pi pane titles now poll the session directory captured when each pane starts,
   so moving between buffers or repos cannot make split panes share or lose
   conversation names.
@@ -92,7 +86,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (after a one-key confirmation), and
   `<C-w>h/j/k/l` plus `<C-w><C-w>` navigate among visible Pi panes with
   buffer-local mappings.
-
 - Yanks from the agent buffer are post-processed via `TextYankPost`: each
   line has terminal padding, box-drawing vertical glyphs (`│ ┃ ║ ╽ ╿ ▏ ▕ ╎
   ╏ ┆ ┇ ┊ ┋ |`), and the input-box `>` prompt stripped from its edges;
