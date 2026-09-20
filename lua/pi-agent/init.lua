@@ -1021,9 +1021,10 @@ local function setup_session_keymaps(session)
     end
   end
 
-  -- Map configurable key(s) to reload extensions and reset the input box.
-  -- On a fresh session (splash screen with no history): just reloads to reset the input.
-  -- With conversation history: confirms before resetting with /new, then reloads extensions.
+  -- Map configurable key(s) to reset the current Pi session.
+  -- On a fresh session (splash screen with no history): reloads to reset the input.
+  -- With conversation history: confirms before resetting with /new, which also
+  -- creates a fresh runtime and reloads extensions.
   local new_session_keymaps = M.config.new_session_keymap
   if type(new_session_keymaps) == "string" then
     new_session_keymaps = { new_session_keymaps }
@@ -1067,15 +1068,15 @@ local function setup_session_keymaps(session)
       if has_history and vim.fn.confirm("Reset this Pi session?", "&Yes\n&No", 1) ~= 1 then
         return
       end
-      -- /reload resets the input box and reloads extensions
-      -- /new is only needed if there's history to clear
       if has_history then
-        vim.api.nvim_chan_send(session.job, "/new\r/reload\r")
+        -- /new creates a fresh runtime and reloads extensions itself. Sending
+        -- /reload immediately afterwards races that asynchronous session swap.
+        vim.api.nvim_chan_send(session.job, "/new\r")
       else
-        -- On fresh splash screen: just reload to reset input, no /new needed
+        -- On fresh splash screen: just reload to reset input, no /new needed.
         vim.api.nvim_chan_send(session.job, "/reload\r")
       end
-    end, vim.tbl_extend("force", opts, { desc = "Pi: reload extensions" }))
+    end, vim.tbl_extend("force", opts, { desc = "Pi: reset session" }))
     end
   end
 end

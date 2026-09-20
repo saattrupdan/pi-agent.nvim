@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `<C-l>` now sends `/new` by itself for active conversations, avoiding the race
+  where an immediately queued `/reload` could run while Pi was still switching
+  sessions and leave the original conversation active.
+
 - `<C-l>` now reliably starts a new session after the splash screen has moved
   into terminal scrollback, instead of misdetecting the pane as fresh and only
   reloading extensions.
