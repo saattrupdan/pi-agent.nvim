@@ -50,7 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conversation names.
 - Split-pane titles now follow their own Pi session files and continue polling
   for `/name` changes, instead of reusing whichever pane wrote most recently.
-- Floating window height reduced by 1 line to give the Pi footer breathing room at the bottom.
+- Floating window height reduced by 1 line to give the Pi footer breathing room
+  at the bottom.
 - Buffer name collision error (`E95: Buffer with this name already exists`) when
   toggling with multiple split panes — buffer names now include the session ID
   to guarantee uniqueness.
@@ -125,12 +126,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Floating terminal window that runs the `pi` CLI, sized at 70% × 70% of the editor by default.
-- Automatic `cd` into the git root of the current buffer, falling back to `cwd` when not in a git worktree.
+- Floating terminal window that runs the `pi` CLI, sized at 70% × 70% of the
+  editor by default.
+- Automatic `cd` into the git root of the current buffer, falling back to `cwd`
+  when not in a git worktree.
 - `:PiAgent`, `:PiAgentOpen`, and `:PiAgentClose` user commands.
-- Default `<C-,>` toggle keymap in normal and terminal modes, configurable via `keymap` (set to `false`/`""` to disable).
-- `abort_keymap` option (default `<C-c>`) that sends `<Esc>` to Pi to abort the current run without leaving terminal mode.
-- `<C-o>` is forwarded to Pi inside the agent buffer so a global tmap can't swallow Pi's detailed-tool-output toggle.
-- `ExitPre` autocmd that stops the agent job on `:wqa` / `:qa` so Neovim doesn't raise `E947`.
+- Default `<C-,>` toggle keymap in normal and terminal modes, configurable via
+  `keymap` (set to `false`/`""` to disable).
+- `abort_keymap` option (default `<C-c>`) that sends `<Esc>` to Pi to abort the
+  current run without leaving terminal mode.
+- `<C-o>` is forwarded to Pi inside the agent buffer so a global tmap can't
+  swallow Pi's detailed-tool-output toggle.
+- `ExitPre` autocmd that stops the agent job on `:wqa` / `:qa` so Neovim doesn't
+  raise `E947`.
 
 [0.1.0]: https://github.com/saattrupdan/pi-agent.nvim/releases/tag/v0.1.0
