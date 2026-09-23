@@ -35,16 +35,20 @@ local function assert_eq(actual, expected, label)
   end
 end
 
-local function assert_frame_geometry(wins)
+local function frame_geometry(win, top, bottom, left, right)
+  return {
+    left = win.col,
+    right = win.col + win.width + left + right,
+    top = win.row,
+    bottom = win.row + win.height + top + bottom,
+  }
+end
+
+local function assert_frame_geometry(wins, top, bottom, left, right)
+  top, bottom, left, right = top or 1, bottom or 1, left or 1, right or 1
   local frames = {}
   for index, win in ipairs(wins) do
-    -- The API width/height exclude the one-cell border on every side.
-    frames[index] = {
-      left = win.col,
-      right = win.col + win.width + 2,
-      top = win.row,
-      bottom = win.row + win.height + 2,
-    }
+    frames[index] = frame_geometry(win, top, bottom, left, right)
   end
 
   for first = 1, #frames do
@@ -57,13 +61,37 @@ local function assert_frame_geometry(wins)
         string.format("frames %d and %d overlap", first, second))
     end
   end
+end
 
-  -- The two top/bottom pairs and the two left/right pairs retain one empty
-  -- cell between their complete frames, not merely between their content.
-  assert_eq(wins[2].row, wins[1].row + wins[1].height + 3, "left pane gap")
-  assert_eq(wins[4].row, wins[3].row + wins[3].height + 3, "right pane gap")
-  assert_eq(wins[3].col, wins[1].col + wins[1].width + 3, "top pane gap")
-  assert_eq(wins[4].col, wins[2].col + wins[2].width + 3, "bottom pane gap")
+local function assert_bounded_geometry(wins, top, bottom, left, right)
+  for index, win in ipairs(wins) do
+    local frame = frame_geometry(win, top, bottom, left, right)
+    assert_eq(frame.left >= 0 and frame.right <= vim.o.columns, true,
+      string.format("frame %d exceeds editor width", index))
+    assert_eq(frame.top >= 0 and frame.bottom <= vim.o.lines - vim.o.cmdheight, true,
+      string.format("frame %d exceeds editor height", index))
+  end
+  assert_frame_geometry(wins, top, bottom, left, right)
+end
+
+local function rerender_with_border(border, top, bottom, left, right)
+  pi.config.border = border
+  vim.api.nvim_exec_autocmds("VimResized", {})
+  local wins = pi_windows()
+  assert_frame_geometry(wins, top, bottom, left, right)
+
+  -- Changing focus must not change a pane's allocation. In particular, the
+  -- inactive replacement border must have the same asymmetric extents.
+  local allocations = {}
+  for index, win in ipairs(wins) do
+    allocations[index] = { width = win.width, height = win.height }
+    vim.api.nvim_set_current_win(win.win)
+  end
+  wins = pi_windows()
+  for index, win in ipairs(wins) do
+    assert_eq(win.width, allocations[index].width, "focus changed width")
+    assert_eq(win.height, allocations[index].height, "focus changed height")
+  end
 end
 
 local function wait_for_windows(count)
@@ -118,6 +146,34 @@ local function run()
     assert_eq(got.height, want.height, "window " .. index .. " height")
   end
   assert_frame_geometry(wins)
+  -- The default one-cell pane gap is measured between complete frames, so
+  -- border titles cannot overlap neighboring panes.
+  assert_eq(wins[2].row, wins[1].row + wins[1].height + 3, "left pane gap")
+  assert_eq(wins[4].row, wins[3].row + wins[3].height + 3, "right pane gap")
+  assert_eq(wins[3].col, wins[1].col + wins[1].width + 3, "top pane gap")
+  assert_eq(wins[4].col, wins[2].col + wins[2].width + 3, "bottom pane gap")
+
+  -- Focus changes must preserve the frame allocation, not just its content.
+  rerender_with_border("single", 1, 1, 1, 1)
+
+  -- Named shadow occupies only its right and bottom cells.
+  rerender_with_border("shadow", 0, 1, 0, 1)
+
+  -- Custom borders can be asymmetric; this one has only top and left edges.
+  rerender_with_border({ "╭", "─", "╮", "", "", "", "", "│" }, 1, 0, 1, 0)
+
+  -- Both spellings are borderless in Neovim.
+  rerender_with_border("none", 0, 0, 0, 0)
+  rerender_with_border("", 0, 0, 0, 0)
+
+  -- Force a nested layout into a smaller editor. Gaps are allowed to shrink,
+  -- but allocations and coordinates must remain inside the editor.
+  vim.o.columns = 8
+  vim.o.lines = 8
+  pi.config.border = "single"
+  pi.config.pane_gap = 3
+  vim.api.nvim_exec_autocmds("VimResized", {})
+  assert_bounded_geometry(pi_windows(), 1, 1, 1, 1)
 end
 
 local ok, err = xpcall(run, debug.traceback)

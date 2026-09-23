@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Split-pane frames now reserve their border extents when laying out children,
-  preventing top/bottom border titles from overlapping while preserving the
-  configured pane gap for named, custom, and borderless configurations.
+- Split-pane frames now reserve recursive border extents and subtree minimums,
+  preventing title overlap in nested layouts while shrinking pane gaps safely
+  when constrained and preserving named, custom, and borderless borders.
 
 ## [0.2.0] - 2026-09-20
 
