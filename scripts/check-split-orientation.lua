@@ -35,6 +35,37 @@ local function assert_eq(actual, expected, label)
   end
 end
 
+local function assert_frame_geometry(wins)
+  local frames = {}
+  for index, win in ipairs(wins) do
+    -- The API width/height exclude the one-cell border on every side.
+    frames[index] = {
+      left = win.col,
+      right = win.col + win.width + 2,
+      top = win.row,
+      bottom = win.row + win.height + 2,
+    }
+  end
+
+  for first = 1, #frames do
+    for second = first + 1, #frames do
+      local a = frames[first]
+      local b = frames[second]
+      local horizontal_overlap = math.min(a.right, b.right) - math.max(a.left, b.left)
+      local vertical_overlap = math.min(a.bottom, b.bottom) - math.max(a.top, b.top)
+      assert_eq(horizontal_overlap > 0 and vertical_overlap > 0, false,
+        string.format("frames %d and %d overlap", first, second))
+    end
+  end
+
+  -- The two top/bottom pairs and the two left/right pairs retain one empty
+  -- cell between their complete frames, not merely between their content.
+  assert_eq(wins[2].row, wins[1].row + wins[1].height + 3, "left pane gap")
+  assert_eq(wins[4].row, wins[3].row + wins[3].height + 3, "right pane gap")
+  assert_eq(wins[3].col, wins[1].col + wins[1].width + 3, "top pane gap")
+  assert_eq(wins[4].col, wins[2].col + wins[2].width + 3, "bottom pane gap")
+end
+
 local function wait_for_windows(count)
   local ok = vim.wait(1000, function()
     return #pi_windows() == count
@@ -49,7 +80,7 @@ local function run()
     command = "cat",
     width = 0.8,
     height = 0.4,
-    border = "none",
+    border = "single",
     keymap = false,
     abort_keymap = false,
   })
@@ -73,10 +104,10 @@ local function run()
   -- A shallow layout keeps vertical halves landscape by aspect, so the
   -- final split must use parent context to produce a top/bottom grid.
   local expected = {
-    { col = 20, row = 23, width = 79, height = 15 },
-    { col = 20, row = 39, width = 79, height = 16 },
-    { col = 100, row = 23, width = 80, height = 15 },
-    { col = 100, row = 39, width = 80, height = 16 },
+    { col = 20, row = 23, width = 77, height = 13 },
+    { col = 20, row = 39, width = 77, height = 14 },
+    { col = 100, row = 23, width = 78, height = 13 },
+    { col = 100, row = 39, width = 78, height = 14 },
   }
 
   for index, want in ipairs(expected) do
@@ -86,6 +117,7 @@ local function run()
     assert_eq(got.width, want.width, "window " .. index .. " width")
     assert_eq(got.height, want.height, "window " .. index .. " height")
   end
+  assert_frame_geometry(wins)
 end
 
 local ok, err = xpcall(run, debug.traceback)
