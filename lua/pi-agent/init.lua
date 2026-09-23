@@ -196,10 +196,8 @@ local function real_path(path)
 end
 
 local function discover_worktrees()
-  if state.worktree_paths then
-    return state.worktree_paths, state.worktree_basenames
-  end
-
+  -- Worktrees can be created while Pi is running, so refresh the Git listing on
+  -- every lookup instead of permanently caching the first poll.
   state.worktree_paths = {}
   state.worktree_basenames = {}
   local base = state.base_cwd
@@ -1507,6 +1505,7 @@ local function create_session()
     started_at = marker_time or os.time(),
   }
   state.sessions[id] = session
+  vim.api.nvim_buf_set_var(session.buf, "pi_agent_session", true)
 
   rename_session_buffer(session)
   vim.bo[session.buf].bufhidden = "hide"
@@ -1530,6 +1529,10 @@ local function create_session()
       end,
     })
   end)
+
+  -- termopen replaces the buffer name with its term:// URI. Restore the
+  -- plugin name afterwards so lifecycle helpers can identify this pane.
+  rename_session_buffer(session)
 
   -- The name lands asynchronously and can later change via `/name`.
   start_name_poll(session)
