@@ -190,11 +190,16 @@ end
 -- @param border A named border or custom border table.
 -- @return number top, number bottom, number left, number right
 local function border_extents_for(border)
-  if border == "none" then
+  -- Neovim treats an empty border string like "none". Unlike the other named
+  -- borders, "shadow" occupies only the right and bottom cells.
+  if border == "none" or border == "" then
     return 0, 0, 0, 0
   end
   if type(border) == "string" then
-    -- All named borders (single, double, rounded, solid, etc.) are 1 cell thick
+    if border == "shadow" then
+      return 0, 1, 0, 1
+    end
+    -- The remaining named borders are one cell thick on every side.
     return 1, 1, 1, 1
   end
   if type(border) == "table" then
@@ -265,28 +270,50 @@ local function inactive_border()
   }
 end
 
+local function pane_gap()
+  local gap = M.config.pane_gap
+  if type(gap) ~= "number" and type(gap) ~= "string" then
+    return 0
+  end
+  return math.max(0, math.floor(tonumber(gap) or 0))
+end
+
+-- Return the smallest complete frame that can contain a subtree. A frame
+-- includes its border, unlike the width/height passed to nvim_open_win.
+local function subtree_minimum(node)
+  local top, bottom, left, right = border_extents()
+  if not node or node.id then
+    return left + right + 1, top + bottom + 1
+  end
+
+  local first_width, first_height = subtree_minimum(node.first)
+  local second_width, second_height = subtree_minimum(node.second)
+  if node.split == "vertical" then
+    return first_width + pane_gap() + second_width, math.max(first_height, second_height)
+  end
+  return math.max(first_width, second_width), first_height + pane_gap() + second_height
+end
+
 local function pane_area()
-  -- Usable area excludes the command line at the bottom
-  local usable_lines = vim.o.lines - vim.o.cmdheight
+  -- Usable area excludes the command line at the bottom.
+  local usable_lines = math.max(0, vim.o.lines - vim.o.cmdheight)
+  local editor_width = math.max(0, vim.o.columns)
 
   -- Compute the total frame size (content + border) as percentage of usable area.
   -- Round to nearest integer for better approximation of the configured percentage.
   local frame_height = math.max(1, math.floor(usable_lines * M.config.height + 0.5))
-  local frame_width = math.max(1, math.floor(vim.o.columns * M.config.width + 0.5))
+  local frame_width = math.max(1, math.floor(editor_width * M.config.width + 0.5))
+  local minimum_width, minimum_height = subtree_minimum(state.layout)
 
-  -- A layout rect describes the complete frame allocation. Leaf rects subtract
-  -- their borders later, so split children can reserve border cells correctly.
-  local top, bottom, left, right = border_extents()
-  frame_height = math.max(frame_height, top + bottom + 1)
-  frame_width = math.max(frame_width, left + right + 1)
+  -- A split may need more room than the configured percentage. Expand within
+  -- the editor when possible; if the editor itself is smaller, stay bounded by
+  -- it rather than inventing a frame outside the screen.
+  frame_height = math.min(usable_lines, math.max(frame_height, minimum_height))
+  frame_width = math.min(editor_width, math.max(frame_width, minimum_width))
 
-  -- Center the frame within the usable area
-  local row = math.floor((usable_lines - frame_height) / 2)
-  local col = math.floor((vim.o.columns - frame_width) / 2)
-
-  -- Clamp to valid usable bounds to avoid negative values for small editors
-  row = math.max(0, row)
-  col = math.max(0, col)
+  -- Center the frame within the usable area and keep its origin in bounds.
+  local row = math.max(0, math.floor((usable_lines - frame_height) / 2))
+  local col = math.max(0, math.floor((editor_width - frame_width) / 2))
 
   return {
     row = row,
@@ -296,21 +323,34 @@ local function pane_area()
   }
 end
 
-local function pane_gap()
-  local gap = M.config.pane_gap
-  if type(gap) ~= "number" and type(gap) ~= "string" then
-    return 0
-  end
-  return math.max(0, math.floor(tonumber(gap) or 0))
-end
+-- Split a parent dimension without ever allocating more than it contains.
+-- When both subtree minima fit, they are hard lower bounds and the requested
+-- gap is reduced only as much as necessary. If the editor is physically too
+-- small, return bounded allocations and let the child windows be clipped by
+-- Neovim rather than producing out-of-bounds coordinates.
+local function split_size(size, gap, first_minimum, second_minimum)
+  size = math.max(0, math.floor(size or 0))
+  gap = math.max(0, math.floor(gap or 0))
+  first_minimum = math.max(1, math.floor(first_minimum or 1))
+  second_minimum = math.max(1, math.floor(second_minimum or 1))
 
-local function split_size(size, gap, minimum)
-  minimum = math.max(1, minimum or 1)
-  local actual_gap = math.min(gap, math.max(0, size - 2 * minimum))
-  local available = math.max(2 * minimum, size - actual_gap)
-  local first = math.max(minimum, math.floor(available / 2))
-  local second = math.max(minimum, available - first)
-  return first, second, actual_gap
+  local minimum_total = first_minimum + second_minimum
+  local actual_gap = math.min(gap, math.max(0, size - minimum_total))
+  if size >= minimum_total + actual_gap then
+    local extra = size - actual_gap - minimum_total
+    local first = first_minimum + math.floor(extra / 2)
+    return first, size - actual_gap - first, actual_gap
+  end
+
+  -- No two positive allocations can satisfy the subtree minima here. Drop the
+  -- gap and divide the available cells without allowing either child past the
+  -- parent's end. This branch is only for impossible editor dimensions.
+  actual_gap = 0
+  if size <= 1 then
+    return size, 0, actual_gap
+  end
+  local first = math.floor(size / 2)
+  return first, size - first, actual_gap
 end
 
 local function first_leaf(node)
@@ -451,9 +491,15 @@ local function rects_for_layout(node, rect, rects)
   end
 
   local gap = pane_gap()
-  local top, bottom, left, right = border_extents()
   if node.split == "vertical" then
-    local first_width, second_width, actual_gap = split_size(rect.width, gap, left + right + 1)
+    local first_minimum_width = subtree_minimum(node.first)
+    local second_minimum_width = subtree_minimum(node.second)
+    local first_width, second_width, actual_gap = split_size(
+      rect.width,
+      gap,
+      first_minimum_width,
+      second_minimum_width
+    )
     rects_for_layout(node.first, {
       row = rect.row,
       col = rect.col,
@@ -467,7 +513,14 @@ local function rects_for_layout(node, rect, rects)
       height = rect.height,
     }, rects)
   else
-    local first_height, second_height, actual_gap = split_size(rect.height, gap, top + bottom + 1)
+    local _, first_minimum_height = subtree_minimum(node.first)
+    local _, second_minimum_height = subtree_minimum(node.second)
+    local first_height, second_height, actual_gap = split_size(
+      rect.height,
+      gap,
+      first_minimum_height,
+      second_minimum_height
+    )
     rects_for_layout(node.first, {
       row = rect.row,
       col = rect.col,
