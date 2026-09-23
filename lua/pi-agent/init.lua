@@ -11,6 +11,7 @@ local state = {
   base_cwd = nil,
   worktree_paths = nil,
   worktree_basenames = nil,
+  worktree_snapshot_at = nil,
 }
 
 local defaults = {
@@ -195,18 +196,30 @@ local function real_path(path)
   return normalized_path(resolved or path)
 end
 
-local function discover_worktrees()
-  -- Worktrees can be created while Pi is running, so refresh the Git listing on
-  -- every lookup instead of permanently caching the first poll.
-  state.worktree_paths = {}
-  state.worktree_basenames = {}
-  local base = state.base_cwd
-  local root = base and git_root(base)
-  if not root then
+local WORKTREE_REFRESH_INTERVAL = 0.1
+
+local function discover_worktrees(force)
+  local now = vim.loop.hrtime() / 1000000000
+  if state.worktree_paths
+      and state.worktree_snapshot_at
+      and now - state.worktree_snapshot_at < WORKTREE_REFRESH_INTERVAL then
     return state.worktree_paths, state.worktree_basenames
   end
 
-  local lines = vim.fn.systemlist({ "git", "-C", root, "worktree", "list", "--porcelain" })
+  -- Worktrees can be created while Pi is running. Share one throttled Git
+  -- snapshot across panes, and let misses refresh as soon as the throttle
+  -- allows instead of waiting for a lifecycle restart.
+  state.worktree_paths = {}
+  state.worktree_basenames = {}
+  state.worktree_snapshot_at = now
+  local base = state.base_cwd
+  if not base then
+    return state.worktree_paths, state.worktree_basenames
+  end
+
+  -- base_cwd is already the Git root when this lifecycle started in a
+  -- repository, so do not run another rev-parse for every poll.
+  local lines = vim.fn.systemlist({ "git", "-C", base, "worktree", "list", "--porcelain" })
   if vim.v.shell_error ~= 0 then
     return state.worktree_paths, state.worktree_basenames
   end
@@ -237,6 +250,10 @@ local function validated_worktree(path)
   end
   local paths = discover_worktrees()
   local listed = paths[candidate] or paths[real_path(candidate)]
+  if not listed then
+    paths = discover_worktrees(true)
+    listed = paths[candidate] or paths[real_path(candidate)]
+  end
   if listed then
     return listed
   end
@@ -253,6 +270,10 @@ local function worktree_for_basename(basename)
   end
   local _, names = discover_worktrees()
   local candidates = names[basename]
+  if not (candidates and #candidates == 1) then
+    _, names = discover_worktrees(true)
+    candidates = names[basename]
+  end
   if candidates and #candidates == 1 then
     return candidates[1]
   end
@@ -261,7 +282,7 @@ end
 
 local function follow_session_cwd(session)
   local cwd = validated_worktree(session and session.cwd) or state.base_cwd
-  if cwd and vim.fn.getcwd() ~= cwd then
+  if cwd and vim.fn.getcwd(-1, -1) ~= cwd then
     pcall(vim.api.nvim_set_current_dir, cwd)
   end
 end
@@ -277,6 +298,7 @@ local function begin_lifecycle()
   state.base_cwd = resolve_cwd()
   state.worktree_paths = nil
   state.worktree_basenames = nil
+  state.worktree_snapshot_at = nil
 end
 
 local function restore_base_cwd()
@@ -290,6 +312,7 @@ local function clear_lifecycle()
   state.base_cwd = nil
   state.worktree_paths = nil
   state.worktree_basenames = nil
+  state.worktree_snapshot_at = nil
   state.current_id = nil
   state.focused_id = nil
   state.layout = nil
@@ -790,21 +813,6 @@ local function find_session_file(cwd, since, session_id, known_path)
   return newest, newest_time, newest and vim.fn.getfsize(newest) or nil
 end
 
---- Find the last occurrence of a literal substring.
--- @param haystack String to search
--- @param needle Literal substring
--- @return number Index of the last occurrence, or 0 when absent
-local function last_index_of(haystack, needle)
-  local index = 0
-  while true do
-    local next_index = haystack:find(needle, index + 1, true)
-    if not next_index then
-      return index
-    end
-    index = next_index
-  end
-end
-
 --- Read the conversation name from the OSC title Pi writes to the terminal.
 -- Pi titles the terminal "<app> - <name> - <cwd>", or "<app> - <cwd>" when the
 -- session is unnamed, and refreshes it on `/name`, `/resume`, `/new` and tree
@@ -825,30 +833,54 @@ local function session_name_from_term_title(buf, cwd)
     return nil, false
   end
 
-  -- Prefer dropping the trailing cwd field by exact match: a directory name
-  -- containing " - " would otherwise be read as part of the name.
-  local body
-  local base = cwd and cwd ~= "" and vim.fn.fnamemodify(cwd, ":t") or nil
-  local suffix = base and (" - " .. base) or nil
-  if suffix and title:sub(-#suffix) == suffix then
-    body = title:sub(1, -(#suffix + 1))
-  else
-    -- Either the session was resumed from another directory, or its name ends
-    -- with the separator; treat the last field as the cwd either way.
-    local last = last_index_of(title, " - ")
-    if last == 0 then
-      return nil, true, nil
+  -- Match only complete, unique worktree basenames. A basename may itself
+  -- contain " - ", so choose the longest matching suffix rather than treating
+  -- the last delimited field as the cwd.
+  local function matching_suffixes(names)
+    local matches = {}
+    for basename, candidates in pairs(names) do
+      if #candidates == 1 then
+        local suffix = " - " .. basename
+        if title:sub(-#suffix) == suffix then
+          table.insert(matches, { basename = basename, suffix = suffix })
+        end
+      end
     end
-    body = title:sub(1, last - 1)
+    table.sort(matches, function(left, right)
+      return #left.basename > #right.basename
+    end)
+    return matches
   end
 
-  -- Whatever is left after the app title is the conversation name. The final
-  -- title field is only a basename; resolve it against Git worktrees before
-  -- allowing it to change the managed cwd.
+  local _, names = discover_worktrees()
+  local matches = matching_suffixes(names)
+  if #matches == 0 then
+    _, names = discover_worktrees(true)
+    matches = matching_suffixes(names)
+  end
+
+  -- A non-Git launch still has a known cwd, even though there is no worktree
+  -- listing to match. Keep that original launch-cwd behavior without guessing
+  -- from an arbitrary final title field.
+  if #matches == 0 then
+    local launch_base = cwd and cwd ~= "" and vim.fn.fnamemodify(cwd, ":t") or nil
+    if launch_base then
+      local suffix = " - " .. launch_base
+      if title:sub(-#suffix) == suffix then
+        table.insert(matches, { basename = launch_base, suffix = suffix })
+      end
+    end
+  end
+
+  if #matches == 0 then
+    return nil, true, nil
+  end
+
+  local match = matches[1]
+  local body = title:sub(1, #title - #match.suffix)
   local first = body:find(" - ", 1, true)
   local name = first and vim.trim(body:sub(first + 3)) or ""
-  local title_cwd = vim.trim(title:sub(last_index_of(title, " - ") + 3))
-  return name ~= "" and name or nil, true, title_cwd ~= "" and title_cwd or nil
+  return name ~= "" and name or nil, true, match.basename
 end
 
 local function session_title(session)

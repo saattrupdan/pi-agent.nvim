@@ -48,6 +48,10 @@ local function pi_job(buf)
   return vim.bo[buf].channel or 0
 end
 
+local function global_cwd()
+  return vim.fn.getcwd(-1, -1)
+end
+
 local function wait_for(predicate, label)
   assert_true(vim.wait(3000, predicate, 20), label)
 end
@@ -66,8 +70,8 @@ end
 local function run()
   local tmp = vim.fn.tempname()
   local base = tmp .. "/base"
-  local worktree_one = tmp .. "/managed-one"
-  local worktree_two = tmp .. "/managed-two"
+  local worktree_one = tmp .. "/foo - bar"
+  local worktree_two = tmp .. "/bar"
   local sessions = tmp .. "/sessions"
   local log = tmp .. "/launch.log"
   local fake = tmp .. "/fake-pi"
@@ -77,8 +81,8 @@ local function run()
   -- paths Neovim and `git worktree list` report in all assertions and metadata.
   tmp = vim.loop.fs_realpath(tmp) or tmp
   base = tmp .. "/base"
-  worktree_one = tmp .. "/managed-one"
-  worktree_two = tmp .. "/managed-two"
+  worktree_one = tmp .. "/foo - bar"
+  worktree_two = tmp .. "/bar"
   sessions = tmp .. "/sessions"
   log = tmp .. "/launch.log"
   fake = tmp .. "/fake-pi"
@@ -122,14 +126,14 @@ local function run()
     return #pi_windows() == 1 and vim.fn.filereadable(log) == 1
   end, "initial pane did not start")
   local first_buf = vim.api.nvim_get_current_buf()
-  assert_eq(vim.fn.getcwd(), base, "initial global cwd")
+  assert_eq(global_cwd(), base, "initial global cwd")
 
   -- Create managed worktrees only after Pi has started and its first poll has
   -- run. The delayed JSONL header below must be discovered from a fresh Git
   -- listing rather than an initial cached result.
   run_git(base, "worktree", "add", "-qb", "smoke-one", worktree_one, "HEAD")
   run_git(base, "worktree", "add", "-qb", "smoke-two", worktree_two, "HEAD")
-  wait_for(function() return vim.fn.getcwd() == worktree_one end, "delayed JSONL worktree was not followed")
+  wait_for(function() return global_cwd() == worktree_one end, "delayed JSONL worktree was not followed")
 
   -- Focus follows unique worktree basenames from delayed OSC-title updates.
   pi.split()
@@ -145,12 +149,21 @@ local function run()
   assert_true(first_win ~= nil, "first pane disappeared")
   set_title(first_buf, "one", vim.fn.fnamemodify(worktree_one, ":t"))
   vim.api.nvim_set_current_win(first_win)
-  wait_for(function() return vim.fn.getcwd() == worktree_one end, "first worktree was not followed")
+  wait_for(function() return global_cwd() == worktree_one end, "first worktree was not followed")
+
+  -- A window-local cwd must not hide a global cwd change when a title moves the
+  -- active pane. This also exercises a basename containing the title delimiter.
+  vim.api.nvim_win_call(first_win, function()
+    vim.cmd("lcd " .. vim.fn.fnameescape(worktree_two))
+  end)
+  vim.cmd("cd " .. vim.fn.fnameescape(base))
+  assert_eq(vim.fn.getcwd(), worktree_two, "window-local cwd")
+  assert_eq(global_cwd(), base, "global cwd before title move")
 
   -- A resume-style title can move the active pane between existing validated
   -- worktrees without relying on its original JSONL session file.
   set_title(first_buf, "resumed", vim.fn.fnamemodify(worktree_two, ":t"))
-  wait_for(function() return vim.fn.getcwd() == worktree_two end, "resumed worktree was not followed")
+  wait_for(function() return global_cwd() == worktree_two end, "resumed worktree was not followed")
 
   set_title(second_buf, "two", vim.fn.fnamemodify(worktree_two, ":t"))
   vim.api.nvim_set_current_win((function()
@@ -158,7 +171,7 @@ local function run()
       if item.buf == second_buf then return item.win end
     end
   end)())
-  wait_for(function() return vim.fn.getcwd() == worktree_two end, "second worktree was not followed")
+  wait_for(function() return global_cwd() == worktree_two end, "second worktree was not followed")
 
   -- Hiding and reopening restores the exact focused pane and its buffer.
   pi.close()
@@ -166,7 +179,7 @@ local function run()
   pi.open()
   wait_for(function() return #pi_windows() == 2 end, "panes did not reopen")
   assert_eq(vim.api.nvim_get_current_buf(), second_buf, "restored focused buffer")
-  assert_eq(vim.fn.getcwd(), worktree_two, "cwd while hidden/reopened")
+  assert_eq(global_cwd(), worktree_two, "cwd while hidden/reopened")
 
   -- Splits remain rooted in the original checkout, not the followed worktree.
   pi.split()
@@ -176,7 +189,7 @@ local function run()
   end, "launch log did not record all panes")
   local third_buf = vim.api.nvim_get_current_buf()
   set_title(third_buf, "three", vim.fn.fnamemodify(worktree_two, ":t"))
-  wait_for(function() return vim.fn.getcwd() == worktree_two end, "new pane worktree was not followed")
+  wait_for(function() return global_cwd() == worktree_two end, "new pane worktree was not followed")
   for _, launched_cwd in ipairs(vim.fn.readfile(log)) do
     assert_eq(launched_cwd, base, "split launch cwd")
   end
@@ -187,7 +200,7 @@ local function run()
   assert_true(exited_job > 0, "first pane has no job")
   vim.fn.jobstop(exited_job)
   wait_for(function() return #pi_windows() == 2 end, "surviving panes were not retained")
-  assert_eq(vim.fn.getcwd(), worktree_two, "cwd after surviving pane exit")
+  assert_eq(global_cwd(), worktree_two, "cwd after surviving pane exit")
 
   -- Stop the remaining jobs: the final pane restores the original checkout.
   for _, buf in ipairs(pi_buffers()) do
@@ -197,7 +210,7 @@ local function run()
     end
   end
   wait_for(function() return #pi_windows() == 0 end, "final pane did not exit")
-  assert_eq(vim.fn.getcwd(), base, "final cwd restoration")
+  assert_eq(global_cwd(), base, "final cwd restoration")
 
   vim.cmd("cd " .. vim.fn.fnameescape(root))
   run_git(base, "worktree", "remove", "--force", worktree_one)

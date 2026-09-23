@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- OSC titles now match the longest unambiguous known worktree basename, including
+  basenames containing ` - `, without mistaking a conversation-name field for a
+  cwd.
+- Global cwd synchronization now updates the tab-independent cwd even when the
+  focused window has a local `:lcd`.
+- Worktree polling now shares a throttled snapshot across panes and refreshes on
+  misses, while avoiding redundant Git-root lookups.
 - Worktree discovery now refreshes while Pi is running, so newly created managed
   worktrees can be followed from delayed session metadata or OSC titles.
 - Terminal pane buffers retain their plugin identity after `termopen`, keeping
