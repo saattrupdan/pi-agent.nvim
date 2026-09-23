@@ -7,9 +7,10 @@ A tiny Neovim plugin that opens your [Pi](https://github.com/) agent in a center
 ## Features
 
 - Floating Pi area, 90% × 90% of the editor by default, that recenters and resizes with Neovim
-- Automatically `cd`s each Pi session into the git root of the current buffer, falling back to `cwd`
+- Automatically launches Pi from the original checkout's git root (falling back to `cwd` outside Git), even after following managed worktrees
+- Follows the focused session's validated Git worktree in Neovim's global cwd, including delayed session metadata and resume/title changes
 - Multiple Pi terminal sessions in tiled floating panes
-- Toggle in and out — all `pi` sessions persist across toggles until you close their pane or exit Pi
+- Toggle in and out — all `pi` sessions persist across toggles, restoring the exact focused pane and terminal buffer until you close their pane or exit Pi
 - Configurable size, border, and command
 
 ## Requirements
@@ -119,7 +120,7 @@ Inside the agent buffer, `<C-l>` sends `/new` to Pi so you can start a fresh ses
 
 ## How it works
 
-When you create a Pi session, the plugin runs `git -C <cwd> rev-parse --show-toplevel`. If that succeeds, the floating terminal is launched in the repo root; otherwise it uses the current working directory. Buffers are kept around between toggles, so hiding the Pi area doesn't kill any `pi` sessions. Closing an individual pane with `<C-x>` stops that pane's job; exiting Neovim stops all live jobs.
+When the first Pi pane is created, the plugin captures the original Git checkout (or global `cwd` outside Git). Every later split is launched from that checkout, never from a followed worktree. Pi's JSONL session header supplies each pane's managed cwd when available; otherwise the OSC title's cwd basename is resolved only when it uniquely matches `git worktree list --porcelain` for the original checkout. The global cwd follows the focused validated worktree. Buffers are kept around between toggles, so hiding the Pi area doesn't kill sessions or restore the cwd. Closing the final pane or exiting Neovim restores the original checkout.
 
 ## License
 

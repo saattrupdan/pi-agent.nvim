@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Pi panes now synchronize focus and Neovim's global cwd with validated Git
+  worktrees discovered from session headers or unique OSC-title basenames.
+  Splits continue to launch from the original checkout, and hiding/reopening
+  restores the exact focused terminal buffer.
+- Added a self-contained headless worktree/focus smoke script under `scripts`.
+
 ### Fixed
 
 - Split-pane frames now reserve recursive border extents and subtree minimums,

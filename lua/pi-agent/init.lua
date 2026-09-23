@@ -4,8 +4,13 @@ local state = {
   sessions = {},
   layout = nil,
   current_id = nil,
+  focused_id = nil,
   next_id = 1,
   visible = false,
+  suppress_focus_events = false,
+  base_cwd = nil,
+  worktree_paths = nil,
+  worktree_basenames = nil,
 }
 
 local defaults = {
@@ -173,8 +178,124 @@ local function resolve_cwd()
   return git_root(cwd) or cwd
 end
 
+local function normalized_path(path)
+  if not path or path == "" then
+    return nil
+  end
+  local absolute = vim.fn.fnamemodify(path, ":p")
+  absolute = absolute:gsub("[/\\\\]+$", "")
+  return absolute == "" and "/" or absolute
+end
+
+local function real_path(path)
+  if not path then
+    return nil
+  end
+  local resolved = vim.loop and vim.loop.fs_realpath and vim.loop.fs_realpath(path)
+  return normalized_path(resolved or path)
+end
+
+local function discover_worktrees()
+  if state.worktree_paths then
+    return state.worktree_paths, state.worktree_basenames
+  end
+
+  state.worktree_paths = {}
+  state.worktree_basenames = {}
+  local base = state.base_cwd
+  local root = base and git_root(base)
+  if not root then
+    return state.worktree_paths, state.worktree_basenames
+  end
+
+  local lines = vim.fn.systemlist({ "git", "-C", root, "worktree", "list", "--porcelain" })
+  if vim.v.shell_error ~= 0 then
+    return state.worktree_paths, state.worktree_basenames
+  end
+
+  for _, line in ipairs(lines) do
+    local path = line:match("^worktree%s+(.+)$")
+    if path then
+      local listed = normalized_path(path)
+      if listed and vim.fn.isdirectory(listed) == 1 then
+        state.worktree_paths[listed] = listed
+        local resolved = real_path(listed)
+        if resolved then
+          state.worktree_paths[resolved] = listed
+        end
+        local basename = vim.fn.fnamemodify(listed, ":t")
+        state.worktree_basenames[basename] = state.worktree_basenames[basename] or {}
+        table.insert(state.worktree_basenames[basename], listed)
+      end
+    end
+  end
+  return state.worktree_paths, state.worktree_basenames
+end
+
+local function validated_worktree(path)
+  local candidate = normalized_path(path)
+  if not candidate then
+    return nil
+  end
+  local paths = discover_worktrees()
+  local listed = paths[candidate] or paths[real_path(candidate)]
+  if listed then
+    return listed
+  end
+  -- Non-git directories retain the plugin's original cwd behavior.
+  if next(paths) == nil and normalized_path(state.base_cwd) == candidate then
+    return candidate
+  end
+  return nil
+end
+
+local function worktree_for_basename(basename)
+  if not basename or basename == "" then
+    return nil
+  end
+  local _, names = discover_worktrees()
+  local candidates = names[basename]
+  if candidates and #candidates == 1 then
+    return candidates[1]
+  end
+  return nil
+end
+
+local function follow_session_cwd(session)
+  local cwd = validated_worktree(session and session.cwd) or state.base_cwd
+  if cwd and vim.fn.getcwd() ~= cwd then
+    pcall(vim.api.nvim_set_current_dir, cwd)
+  end
+end
+
 local function in_terminal_mode()
   return vim.api.nvim_get_mode().mode:sub(1, 1) == "t"
+end
+
+local function begin_lifecycle()
+  if state.base_cwd then
+    return
+  end
+  state.base_cwd = resolve_cwd()
+  state.worktree_paths = nil
+  state.worktree_basenames = nil
+end
+
+local function restore_base_cwd()
+  if state.base_cwd and vim.fn.isdirectory(state.base_cwd) == 1 then
+    pcall(vim.api.nvim_set_current_dir, state.base_cwd)
+  end
+end
+
+local function clear_lifecycle()
+  restore_base_cwd()
+  state.base_cwd = nil
+  state.worktree_paths = nil
+  state.worktree_basenames = nil
+  state.current_id = nil
+  state.focused_id = nil
+  state.layout = nil
+  state.visible = false
 end
 
 local function is_valid_win(win)
@@ -564,9 +685,26 @@ local function pi_session_dir(cwd)
   return agent_dir .. "/sessions/--" .. encoded .. "--"
 end
 
---- Read the latest session_info name from a Pi session .jsonl file.
+--- Read the cwd from the first (header) entry in a Pi session file.
 -- @param path Absolute path to the session file
--- @return string|nil The most recent session name in the file, or nil
+-- @return string|nil The session cwd, or nil when unavailable
+local function read_session_header_cwd(path)
+  local file = io.open(path, "r")
+  if not file then
+    return nil
+  end
+  local line = file:read("*l")
+  file:close()
+  if not line then
+    return nil
+  end
+  local ok, entry = pcall(vim.json.decode, line)
+  if ok and type(entry) == "table" and type(entry.cwd) == "string" then
+    return entry.cwd
+  end
+  return nil
+end
+
 local function read_session_name_from_file(path)
   local file = io.open(path, "r")
   if not file then
@@ -678,6 +816,7 @@ end
 -- @param cwd Directory the pane launched Pi in, used to locate the trailing field
 -- @return string|nil The session name, nil when the session is unnamed
 -- @return boolean True when Pi has set a title (nil name is then authoritative)
+-- @return string|nil The cwd basename from the title
 local function session_name_from_term_title(buf, cwd)
   if not is_valid_buf(buf) then
     return nil, false
@@ -700,15 +839,18 @@ local function session_name_from_term_title(buf, cwd)
     -- with the separator; treat the last field as the cwd either way.
     local last = last_index_of(title, " - ")
     if last == 0 then
-      return nil, true
+      return nil, true, nil
     end
     body = title:sub(1, last - 1)
   end
 
-  -- Whatever is left after the app title is the conversation name.
+  -- Whatever is left after the app title is the conversation name. The final
+  -- title field is only a basename; resolve it against Git worktrees before
+  -- allowing it to change the managed cwd.
   local first = body:find(" - ", 1, true)
   local name = first and vim.trim(body:sub(first + 3)) or ""
-  return name ~= "" and name or nil, true
+  local title_cwd = vim.trim(title:sub(last_index_of(title, " - ") + 3))
+  return name ~= "" and name or nil, true, title_cwd ~= "" and title_cwd or nil
 end
 
 local function session_title(session)
@@ -728,6 +870,31 @@ end
 -- @param session The session object
 -- @param cwd The current working directory of the session
 -- @return boolean True when the visible title changed.
+local function discover_session_cwd(session, title_cwd)
+  local lookup_cwd = session.launch_cwd or state.base_cwd or session.cwd
+  local path = find_session_file(
+    lookup_cwd,
+    session.started_at,
+    session.session_id,
+    session.session_file
+  )
+  if path then
+    local header_cwd = read_session_header_cwd(path)
+    local validated = validated_worktree(header_cwd)
+    if validated then
+      session.cwd = validated
+    end
+  end
+
+  -- Pi's OSC title follows /resume and session switches, while its cwd field is
+  -- only a basename. Do not trust it unless exactly one original-repo worktree
+  -- has that basename.
+  local title_worktree = worktree_for_basename(title_cwd)
+  if title_worktree then
+    session.cwd = title_worktree
+  end
+end
+
 local function update_conversation_name(session, cwd)
   local path, mtime, size = find_session_file(
     cwd,
@@ -1000,7 +1167,9 @@ local function focus_session(id, start_insert)
     return false
   end
   state.current_id = id
+  state.focused_id = id
   vim.api.nvim_set_current_win(session.win)
+  follow_session_cwd(session)
   update_active_marker()
   if start_insert then
     vim.schedule(function()
@@ -1256,17 +1425,27 @@ end
 -- @param session The session object
 -- @return boolean True when the visible title changed.
 local function refresh_conversation_title(session)
-  local name, has_title = session_name_from_term_title(session.buf, session.cwd)
+  local name, has_title, title_cwd = session_name_from_term_title(session.buf, session.cwd)
+  local old_cwd = session.cwd
+  discover_session_cwd(session, title_cwd)
+  local cwd_changed = old_cwd ~= session.cwd
+
   if has_title then
-    if name == session.conversation_name then
-      return false
+    if name ~= session.conversation_name then
+      session.conversation_name = name
+      rename_session_buffer(session)
+      cwd_changed = true
     end
-    session.conversation_name = name
-    rename_session_buffer(session)
-    return true
+  else
+    if update_conversation_name(session, session.launch_cwd or session.cwd) then
+      cwd_changed = true
+    end
   end
 
-  return update_conversation_name(session, session.cwd)
+  if cwd_changed and state.current_id == session.id then
+    follow_session_cwd(session)
+  end
+  return cwd_changed
 end
 
 --- Poll Pi for conversation-name changes and refresh titles.
@@ -1302,7 +1481,7 @@ local function create_session()
   local id = state.next_id
   state.next_id = state.next_id + 1
   local session_id = new_session_id(id)
-  local cwd = resolve_cwd()
+  local cwd = state.base_cwd or resolve_cwd()
 
   -- Create marker before launching pi for session claiming
   local marker_path, marker_time = create_marker(cwd, session_id)
@@ -1316,6 +1495,7 @@ local function create_session()
     closing = false,
     conversation_name = nil,
     cwd = cwd,
+    launch_cwd = cwd,
     session_id = session_id,
     session_file = nil,
     session_mtime = nil,
@@ -1364,6 +1544,8 @@ render_layout = function(focus_id)
   end
 
   state.visible = true
+  local previous_suppress = state.suppress_focus_events
+  state.suppress_focus_events = true
   local rects = layout_rects()
 
   each_session(function(session, id)
@@ -1387,7 +1569,8 @@ render_layout = function(focus_id)
     end
   end)
 
-  focus_session(focus_id or state.current_id or first_leaf(state.layout), in_terminal_mode())
+  state.suppress_focus_events = previous_suppress
+  focus_session(focus_id or state.focused_id or state.current_id or first_leaf(state.layout), in_terminal_mode())
 end
 
 remove_session = function(id, stop_job)
@@ -1396,11 +1579,15 @@ remove_session = function(id, stop_job)
     return
   end
 
+  local was_focused = state.focused_id == id or state.current_id == id
   session.closing = true
   if session.name_timer then
     pcall(vim.fn.timer_stop, session.name_timer)
     session.name_timer = nil
   end
+
+  local previous_suppress = state.suppress_focus_events
+  state.suppress_focus_events = true
   if is_valid_win(session.win) then
     pcall(vim.api.nvim_win_close, session.win, true)
   end
@@ -1410,18 +1597,32 @@ remove_session = function(id, stop_job)
   if is_valid_buf(session.buf) then
     pcall(vim.api.nvim_buf_delete, session.buf, { force = true })
   end
+  state.suppress_focus_events = previous_suppress
 
   -- Delete marker for this session
   delete_marker(session.marker_path)
 
   state.sessions[id] = nil
   state.layout = collapse_leaf(state.layout, id)
-  if state.current_id == id then
+  if was_focused or not valid_layout_session(state.current_id) then
     state.current_id = first_leaf(state.layout)
+  end
+  if state.focused_id == id then
+    state.focused_id = state.current_id
+  end
+
+  if not next(state.sessions) or not state.layout then
+    clear_lifecycle()
+    return
   end
 
   if state.visible then
     render_layout(state.current_id)
+  else
+    local surviving = state.sessions[state.focused_id or state.current_id or first_leaf(state.layout)]
+    if surviving then
+      follow_session_cwd(surviving)
+    end
   end
 end
 
@@ -1439,23 +1640,41 @@ end
 
 function M.open()
   if not state.layout then
+    begin_lifecycle()
     local session = create_session()
     state.layout = { id = session.id }
     state.current_id = session.id
+    state.focused_id = session.id
   end
 
-  render_layout(state.current_id or first_leaf(state.layout))
+  render_layout(state.focused_id or state.current_id or first_leaf(state.layout))
   vim.cmd("startinsert")
 end
 
 function M.close()
+  -- Remember the pane before closing any float. Window teardown emits WinEnter;
+  -- those transient events must not replace the pane restored by the next open.
+  local focused = current_session_id() or state.focused_id or state.current_id
+  if focused and state.sessions[focused] then
+    state.current_id = focused
+    state.focused_id = focused
+  end
+
+  local previous_suppress = state.suppress_focus_events
+  state.suppress_focus_events = true
   each_session(function(session)
     if is_valid_win(session.win) then
       pcall(vim.api.nvim_win_close, session.win, true)
     end
     session.win = nil
   end)
+  state.suppress_focus_events = previous_suppress
   state.visible = false
+
+  local session = state.sessions[state.focused_id or state.current_id]
+  if session then
+    follow_session_cwd(session)
+  end
 end
 
 function M.toggle()
@@ -1554,13 +1773,15 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("WinEnter", {
     group = group,
     callback = function()
-      if not state.visible then
+      if state.suppress_focus_events or not state.visible then
         return
       end
       local id = current_session_id()
       local session = id and state.sessions[id]
       if session and is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win then
         state.current_id = id
+        state.focused_id = id
+        follow_session_cwd(session)
         update_active_marker()
       end
     end,
@@ -1571,6 +1792,7 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("ExitPre", {
     group = group,
     callback = function()
+      state.suppress_focus_events = true
       each_session(function(session)
         session.closing = true
         if session.name_timer then
@@ -1588,9 +1810,8 @@ function M.setup(opts)
         delete_marker(session.marker_path)
       end)
       state.sessions = {}
-      state.layout = nil
-      state.current_id = nil
-      state.visible = false
+      clear_lifecycle()
+      state.suppress_focus_events = false
     end,
   })
 
