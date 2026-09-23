@@ -153,10 +153,10 @@ local function run()
 
   -- A window-local cwd must not hide a global cwd change when a title moves the
   -- active pane. This also exercises a basename containing the title delimiter.
+  vim.cmd("cd " .. vim.fn.fnameescape(base))
   vim.api.nvim_win_call(first_win, function()
     vim.cmd("lcd " .. vim.fn.fnameescape(worktree_two))
   end)
-  vim.cmd("cd " .. vim.fn.fnameescape(base))
   assert_eq(vim.fn.getcwd(), worktree_two, "window-local cwd")
   assert_eq(global_cwd(), base, "global cwd before title move")
 
