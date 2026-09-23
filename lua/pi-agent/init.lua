@@ -185,11 +185,11 @@ local function is_valid_buf(buf)
   return buf and vim.api.nvim_buf_is_valid(buf)
 end
 
---- Compute border extents from the configured border value.
--- Returns { top, bottom, left, right } in cells.
+--- Compute border extents from a Neovim border value.
+-- Returns top, bottom, left, and right in cells.
+-- @param border A named border or custom border table.
 -- @return number top, number bottom, number left, number right
-local function border_extents()
-  local border = M.config.border
+local function border_extents_for(border)
   if border == "none" then
     return 0, 0, 0, 0
   end
@@ -238,6 +238,33 @@ local function border_extents()
   return 1, 1, 1, 1
 end
 
+local function border_extents()
+  return border_extents_for(M.config.border)
+end
+
+local function inactive_border()
+  -- Keep inactive frames the same size as active custom frames. A blank border
+  -- with different extents would either overlap its neighbour or add an
+  -- unexpected gap when focus changes.
+  local top, bottom, left, right = border_extents()
+  if top + bottom + left + right == 0 then
+    return "none"
+  end
+
+  local blank = { " ", "NormalNC" }
+  local empty = ""
+  return {
+    top > 0 and blank or empty,
+    top > 0 and blank or empty,
+    top > 0 and blank or empty,
+    right > 0 and blank or empty,
+    bottom > 0 and blank or empty,
+    bottom > 0 and blank or empty,
+    bottom > 0 and blank or empty,
+    left > 0 and blank or empty,
+  }
+end
+
 local function pane_area()
   -- Usable area excludes the command line at the bottom
   local usable_lines = vim.o.lines - vim.o.cmdheight
@@ -247,14 +274,11 @@ local function pane_area()
   local frame_height = math.max(1, math.floor(usable_lines * M.config.height + 0.5))
   local frame_width = math.max(1, math.floor(vim.o.columns * M.config.width + 0.5))
 
-  -- Derive border extents from the configured border value
+  -- A layout rect describes the complete frame allocation. Leaf rects subtract
+  -- their borders later, so split children can reserve border cells correctly.
   local top, bottom, left, right = border_extents()
-  local border_rows = top + bottom
-  local border_cols = left + right
-
-  -- Content size is frame minus border
-  local height = math.max(1, frame_height - border_rows)
-  local width = math.max(1, frame_width - border_cols)
+  frame_height = math.max(frame_height, top + bottom + 1)
+  frame_width = math.max(frame_width, left + right + 1)
 
   -- Center the frame within the usable area
   local row = math.floor((usable_lines - frame_height) / 2)
@@ -267,8 +291,8 @@ local function pane_area()
   return {
     row = row,
     col = col,
-    width = width,
-    height = height,
+    width = frame_width,
+    height = frame_height,
   }
 end
 
@@ -280,11 +304,12 @@ local function pane_gap()
   return math.max(0, math.floor(tonumber(gap) or 0))
 end
 
-local function split_size(size, gap)
-  local actual_gap = math.min(gap, math.max(0, size - 2))
-  local available = math.max(2, size - actual_gap)
-  local first = math.max(1, math.floor(available / 2))
-  local second = math.max(1, available - first)
+local function split_size(size, gap, minimum)
+  minimum = math.max(1, minimum or 1)
+  local actual_gap = math.min(gap, math.max(0, size - 2 * minimum))
+  local available = math.max(2 * minimum, size - actual_gap)
+  local first = math.max(minimum, math.floor(available / 2))
+  local second = math.max(minimum, available - first)
   return first, second, actual_gap
 end
 
@@ -415,13 +440,20 @@ local function rects_for_layout(node, rect, rects)
     return rects
   end
   if node.id then
-    rects[node.id] = rect
+    local top, bottom, left, right = border_extents()
+    rects[node.id] = {
+      row = rect.row,
+      col = rect.col,
+      width = math.max(1, rect.width - left - right),
+      height = math.max(1, rect.height - top - bottom),
+    }
     return rects
   end
 
   local gap = pane_gap()
+  local top, bottom, left, right = border_extents()
   if node.split == "vertical" then
-    local first_width, second_width, actual_gap = split_size(rect.width, gap)
+    local first_width, second_width, actual_gap = split_size(rect.width, gap, left + right + 1)
     rects_for_layout(node.first, {
       row = rect.row,
       col = rect.col,
@@ -435,7 +467,7 @@ local function rects_for_layout(node, rect, rects)
       height = rect.height,
     }, rects)
   else
-    local first_height, second_height, actual_gap = split_size(rect.height, gap)
+    local first_height, second_height, actual_gap = split_size(rect.height, gap, top + bottom + 1)
     rects_for_layout(node.first, {
       row = rect.row,
       col = rect.col,
@@ -451,17 +483,6 @@ local function rects_for_layout(node, rect, rects)
   end
   return rects
 end
-
-local INACTIVE_BORDER = {
-  { " ", "NormalNC" },
-  { " ", "NormalNC" },
-  { " ", "NormalNC" },
-  { " ", "NormalNC" },
-  { " ", "NormalNC" },
-  { " ", "NormalNC" },
-  { " ", "NormalNC" },
-  { " ", "NormalNC" },
-}
 
 --- Compute Pi's session directory for a given cwd.
 -- Mirrors getDefaultSessionDirPath() in pi. When $PI_CODING_AGENT_SESSION_DIR is
@@ -694,7 +715,7 @@ local function window_config(rect, id, active)
     row = rect.row,
     col = rect.col,
     style = "minimal",
-    border = active and M.config.border or INACTIVE_BORDER,
+    border = active and M.config.border or inactive_border(),
     title_pos = "center",
   }
 
