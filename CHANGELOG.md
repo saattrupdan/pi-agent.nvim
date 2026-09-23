@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Worktree discovery now refreshes while Pi is running, so newly created managed
+  worktrees can be followed from delayed session metadata or OSC titles.
+- Terminal pane buffers retain their plugin identity after `termopen`, keeping
+  focus tracking and exact focused-pane restoration reliable.
 - Split-pane frames now reserve recursive border extents and subtree minimums,
   preventing title overlap in nested layouts while shrinking pane gaps safely
   when constrained and preserving named, custom, and borderless borders.
