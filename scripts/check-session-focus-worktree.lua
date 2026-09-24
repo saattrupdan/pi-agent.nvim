@@ -18,6 +18,25 @@ local function assert_true(value, label)
   end
 end
 
+local function launch_records(log)
+  local records = {}
+  if vim.fn.filereadable(log) ~= 1 then
+    return records
+  end
+  for _, line in ipairs(vim.fn.readfile(log)) do
+    local cwd, manifest, session_file, session_id, isolation = line:match("^(.-)|(.-)|(.-)|(.-)|(.*)$")
+    assert_true(cwd ~= nil, "malformed fake Pi launch record")
+    table.insert(records, {
+      cwd = cwd,
+      manifest = manifest,
+      session_file = session_file,
+      session_id = session_id,
+      isolation = isolation,
+    })
+  end
+  return records
+end
+
 local function is_pi_buffer(buf)
   local ok, value = pcall(vim.api.nvim_buf_get_var, buf, "pi_agent_session")
   return ok and value == true
@@ -73,6 +92,7 @@ local function run()
   local worktree_one = tmp .. "/foo - bar"
   local worktree_two = tmp .. "/bar"
   local sessions = tmp .. "/sessions"
+  local outside = tmp .. "/outside"
   local log = tmp .. "/launch.log"
   local fake = tmp .. "/fake-pi"
   vim.fn.mkdir(base, "p")
@@ -84,8 +104,10 @@ local function run()
   worktree_one = tmp .. "/foo - bar"
   worktree_two = tmp .. "/bar"
   sessions = tmp .. "/sessions"
+  outside = tmp .. "/outside"
   log = tmp .. "/launch.log"
   fake = tmp .. "/fake-pi"
+  vim.fn.mkdir(outside, "p")
   vim.fn.writefile({ "seed" }, base .. "/seed")
 
   run_git(base, "init", "-q")
@@ -100,8 +122,11 @@ local function run()
     "  if [ \"$1\" = \"--session-id\" ]; then id=$2; shift; fi",
     "  shift",
     "done",
+    "printf '%s|%s|%s|%s|%s\\n' \"$PWD\" \"${PI_WORKTREE_SESSION_MANIFEST:-}\" \"${PI_SESSION_FILE:-}\" \"${PI_SESSION_ID:-}\" \"${PI_WORKTREE_ISOLATION_DISABLE:-}\" >> \"$PI_CODING_AGENT_LOG\"",
+    "if [ -n \"${PI_WORKTREE_SESSION_MANIFEST:-}\" ] || [ -n \"${PI_SESSION_FILE:-}\" ] || [ -n \"${PI_SESSION_ID:-}\" ]; then",
+    "  exit 2",
+    "fi",
     "printf '{\"type\":\"session\",\"cwd\":\"%s\"}\\n' \"$PWD\" > \"$PI_CODING_AGENT_SESSION_DIR/000_$id.jsonl\"",
-    "printf '%s\\n' \"$PWD\" >> \"$PI_CODING_AGENT_LOG\"",
     "(sleep 1; printf '{\"type\":\"session\",\"cwd\":\"%s\"}\\n' \"$PI_CODING_AGENT_DELAYED_CWD\" > \"$PI_CODING_AGENT_SESSION_DIR/000_$id.jsonl\") &",
     "while IFS= read -r line; do :; done",
   }, fake)
@@ -109,6 +134,12 @@ local function run()
   vim.env.PI_CODING_AGENT_SESSION_DIR = sessions
   vim.env.PI_CODING_AGENT_LOG = log
   vim.env.PI_CODING_AGENT_DELAYED_CWD = worktree_one
+  -- Reproduce a pane launched from a parent managed Pi session. The fake Pi
+  -- exits with status 2 if any of these identity variables leak through.
+  vim.env.PI_WORKTREE_SESSION_MANIFEST = "stale-parent-manifest"
+  vim.env.PI_SESSION_FILE = "/tmp/stale-parent-session.jsonl"
+  vim.env.PI_SESSION_ID = "stale-parent-session"
+  vim.env.PI_WORKTREE_ISOLATION_DISABLE = "1"
   vim.cmd("cd " .. vim.fn.fnameescape(base))
 
   pi.setup({
@@ -116,7 +147,7 @@ local function run()
     width = 0.8,
     height = 0.8,
     border = "single",
-    keymap = false,
+    keymap = "<C-,>",
     abort_keymap = false,
   })
 
@@ -127,6 +158,13 @@ local function run()
   end, "initial pane did not start")
   local first_buf = vim.api.nvim_get_current_buf()
   assert_eq(global_cwd(), base, "initial global cwd")
+  local git_launches = launch_records(log)
+  assert_eq(#git_launches, 1, "initial Git launch count")
+  assert_eq(git_launches[1].cwd, base, "initial Git launch cwd")
+  assert_eq(git_launches[1].manifest, "", "initial Git manifest clearing")
+  assert_eq(git_launches[1].session_file, "", "initial Git session-file clearing")
+  assert_eq(git_launches[1].session_id, "", "initial Git session-id clearing")
+  assert_eq(git_launches[1].isolation, "", "Git isolation remains enabled")
 
   -- Create managed worktrees only after Pi has started and its first poll has
   -- run. The delayed JSONL header below must be discovered from a fresh Git
@@ -185,13 +223,19 @@ local function run()
   pi.split()
   wait_for(function() return #pi_windows() == 3 end, "second split did not open")
   wait_for(function()
-    return vim.fn.filereadable(log) == 1 and #vim.fn.readfile(log) >= 3
+    return #launch_records(log) >= 3
   end, "launch log did not record all panes")
   local third_buf = vim.api.nvim_get_current_buf()
   set_title(third_buf, "three", vim.fn.fnamemodify(worktree_two, ":t"))
   wait_for(function() return global_cwd() == worktree_two end, "new pane worktree was not followed")
-  for _, launched_cwd in ipairs(vim.fn.readfile(log)) do
-    assert_eq(launched_cwd, base, "split launch cwd")
+  git_launches = launch_records(log)
+  assert_eq(#git_launches, 3, "Git launch count")
+  for _, launch in ipairs(git_launches) do
+    assert_eq(launch.cwd, base, "split launch cwd")
+    assert_eq(launch.manifest, "", "Git manifest clearing")
+    assert_eq(launch.session_file, "", "Git session-file clearing")
+    assert_eq(launch.session_id, "", "Git session-id clearing")
+    assert_eq(launch.isolation, "", "Git isolation remains enabled")
   end
 
   -- Exiting a non-focused pane follows the surviving focused pane.
@@ -211,6 +255,42 @@ local function run()
   end
   wait_for(function() return #pi_windows() == 0 end, "final pane did not exit")
   assert_eq(global_cwd(), base, "final cwd restoration")
+
+  -- Opening, hiding, and reopening must also work outside any Git repository.
+  -- The launch must clear the parent identity and disable isolation only for
+  -- this non-Git lifecycle.
+  vim.cmd("cd " .. vim.fn.fnameescape(outside))
+  local non_git_start = #launch_records(log)
+  pi.toggle()
+  wait_for(function()
+    return #pi_windows() == 1 and #launch_records(log) == non_git_start + 1
+  end, "non-Git pane did not open")
+  assert_eq(global_cwd(), outside, "non-Git initial cwd")
+  local non_git_launch = launch_records(log)[non_git_start + 1]
+  assert_eq(non_git_launch.cwd, outside, "non-Git launch cwd")
+  assert_eq(non_git_launch.manifest, "", "non-Git manifest clearing")
+  assert_eq(non_git_launch.session_file, "", "non-Git session-file clearing")
+  assert_eq(non_git_launch.session_id, "", "non-Git session-id clearing")
+  assert_eq(non_git_launch.isolation, "1", "non-Git isolation disabled")
+
+  vim.cmd("stopinsert")
+  pi.toggle()
+  assert_eq(#pi_windows(), 0, "non-Git hidden pane count")
+  assert_eq(global_cwd(), outside, "non-Git cwd while hidden")
+  pi.toggle()
+  wait_for(function() return #pi_windows() == 1 end, "non-Git pane did not reopen")
+  assert_eq(global_cwd(), outside, "non-Git cwd while reopened")
+  assert_eq(#launch_records(log), non_git_start + 1, "non-Git reopen launch count")
+  assert_eq(launch_records(log)[non_git_start + 1].isolation, "1", "non-Git reopen isolation")
+
+  for _, buf in ipairs(pi_buffers()) do
+    local job = pi_job(buf)
+    if job > 0 then
+      vim.fn.jobstop(job)
+    end
+  end
+  wait_for(function() return #pi_windows() == 0 end, "non-Git pane did not exit")
+  assert_eq(global_cwd(), outside, "non-Git final cwd restoration")
 
   vim.cmd("cd " .. vim.fn.fnameescape(root))
   run_git(base, "worktree", "remove", "--force", worktree_one)

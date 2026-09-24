@@ -9,6 +9,7 @@ local state = {
   visible = false,
   suppress_focus_events = false,
   base_cwd = nil,
+  base_git_root = nil,
   worktree_paths = nil,
   worktree_basenames = nil,
   worktree_snapshot_at = nil,
@@ -176,7 +177,8 @@ end
 
 local function resolve_cwd()
   local cwd = vim.fn.getcwd()
-  return git_root(cwd) or cwd
+  local root = git_root(cwd)
+  return root or cwd, root
 end
 
 local function normalized_path(path)
@@ -212,12 +214,15 @@ local function discover_worktrees(force)
   state.worktree_paths = {}
   state.worktree_basenames = {}
   state.worktree_snapshot_at = now
-  local base = state.base_cwd
+  -- A non-Git lifecycle has no worktrees to discover. In particular, do not
+  -- run `git worktree list` against an arbitrary cwd: `git_root` already
+  -- established that this lifecycle is outside a repository.
+  local base = state.base_git_root
   if not base then
     return state.worktree_paths, state.worktree_basenames
   end
 
-  -- base_cwd is already the Git root when this lifecycle started in a
+  -- base_git_root is already the Git root when this lifecycle started in a
   -- repository, so do not run another rev-parse for every poll.
   local lines = vim.fn.systemlist({ "git", "-C", base, "worktree", "list", "--porcelain" })
   if vim.v.shell_error ~= 0 then
@@ -295,7 +300,9 @@ local function begin_lifecycle()
   if state.base_cwd then
     return
   end
-  state.base_cwd = resolve_cwd()
+  local cwd, root = resolve_cwd()
+  state.base_cwd = cwd
+  state.base_git_root = root
   state.worktree_paths = nil
   state.worktree_basenames = nil
   state.worktree_snapshot_at = nil
@@ -310,6 +317,7 @@ end
 local function clear_lifecycle()
   restore_base_cwd()
   state.base_cwd = nil
+  state.base_git_root = nil
   state.worktree_paths = nil
   state.worktree_basenames = nil
   state.worktree_snapshot_at = nil
@@ -317,6 +325,17 @@ local function clear_lifecycle()
   state.focused_id = nil
   state.layout = nil
   state.visible = false
+end
+
+local function terminal_env()
+  return {
+    -- Never let a pane inherit the managed Pi session that launched Neovim.
+    PI_WORKTREE_SESSION_MANIFEST = "",
+    PI_SESSION_FILE = "",
+    PI_SESSION_ID = "",
+    -- Worktree isolation is meaningful only when the lifecycle started in Git.
+    PI_WORKTREE_ISOLATION_DISABLE = state.base_git_root and "" or "1",
+  }
 end
 
 local function is_valid_win(win)
@@ -1551,6 +1570,7 @@ local function create_session()
   vim.api.nvim_buf_call(session.buf, function()
     session.job = vim.fn.termopen(cmd, {
       cwd = cwd,
+      env = terminal_env(),
       on_exit = function()
         vim.schedule(function()
           if session.closing then
