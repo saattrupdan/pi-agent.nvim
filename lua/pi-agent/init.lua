@@ -8,6 +8,7 @@ local state = {
   next_id = 1,
   visible = false,
   suppress_focus_events = false,
+  syncing_cwd = false,
   base_cwd = nil,
   base_git_root = nil,
   worktree_paths = nil,
@@ -287,8 +288,19 @@ end
 
 local function follow_session_cwd(session)
   local cwd = validated_worktree(session and session.cwd) or state.base_cwd
-  if cwd and vim.fn.getcwd(-1, -1) ~= cwd then
-    pcall(vim.api.nvim_set_current_dir, cwd)
+  if not cwd or state.syncing_cwd or vim.fn.getcwd(-1, -1) == cwd then
+    return
+  end
+
+  state.syncing_cwd = true
+  pcall(vim.api.nvim_set_current_dir, cwd)
+  state.syncing_cwd = false
+end
+
+local function follow_focused_session_cwd()
+  local session = state.sessions[state.focused_id or state.current_id]
+  if state.layout and session then
+    follow_session_cwd(session)
   end
 end
 
@@ -310,7 +322,9 @@ end
 
 local function restore_base_cwd()
   if state.base_cwd and vim.fn.isdirectory(state.base_cwd) == 1 then
+    state.syncing_cwd = true
     pcall(vim.api.nvim_set_current_dir, state.base_cwd)
+    state.syncing_cwd = false
   end
 end
 
@@ -1825,19 +1839,30 @@ function M.setup(opts)
     end,
   })
 
-  vim.api.nvim_create_autocmd("WinEnter", {
+  vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     group = group,
     callback = function()
-      if state.suppress_focus_events or not state.visible then
+      if state.suppress_focus_events then
         return
       end
-      local id = current_session_id()
-      local session = id and state.sessions[id]
-      if session and is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win then
-        state.current_id = id
-        state.focused_id = id
-        follow_session_cwd(session)
-        update_active_marker()
+      if state.visible then
+        local id = current_session_id()
+        local session = id and state.sessions[id]
+        if session and is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win then
+          state.current_id = id
+          state.focused_id = id
+          update_active_marker()
+        end
+      end
+      follow_focused_session_cwd()
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("DirChanged", {
+    group = group,
+    callback = function()
+      if not state.syncing_cwd and not state.suppress_focus_events then
+        follow_focused_session_cwd()
       end
     end,
   })
