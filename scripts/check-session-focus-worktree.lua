@@ -189,14 +189,15 @@ local function run()
   vim.api.nvim_set_current_win(first_win)
   wait_for(function() return global_cwd() == worktree_one end, "first worktree was not followed")
 
-  -- A window-local cwd must not hide a global cwd change when a title moves the
+  -- A window-local cwd must not hide the global cwd when a title moves the
   -- active pane. This also exercises a basename containing the title delimiter.
   vim.cmd("cd " .. vim.fn.fnameescape(base))
+  assert_eq(global_cwd(), worktree_one, "active cwd persists after :cd")
   vim.api.nvim_win_call(first_win, function()
     vim.cmd("lcd " .. vim.fn.fnameescape(worktree_two))
   end)
   assert_eq(vim.fn.getcwd(), worktree_two, "window-local cwd")
-  assert_eq(global_cwd(), base, "global cwd before title move")
+  assert_eq(global_cwd(), worktree_one, "global cwd before title move")
 
   -- A resume-style title can move the active pane between existing validated
   -- worktrees without relying on its original JSONL session file.
