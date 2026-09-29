@@ -120,7 +120,7 @@ Inside the agent buffer, `<C-l>` sends `/new` to Pi so you can start a fresh ses
 
 ## How it works
 
-When the first Pi pane is created, the plugin captures the original Git checkout (or global `cwd` outside Git). Every later split is launched from that checkout, never from a followed worktree. Pi's JSONL session header supplies each pane's managed cwd when available; otherwise the OSC title's cwd basename is resolved only when it uniquely matches `git worktree list --porcelain` for the original checkout. The global cwd follows the focused validated worktree. Buffers are kept around between toggles, so hiding the Pi area doesn't kill sessions or restore the cwd. Closing the final pane or exiting Neovim restores the original checkout.
+When the first Pi pane is created, the plugin captures the original Git checkout (or global `cwd` outside Git). Every later split is launched from that checkout, never from a followed worktree. Pi's JSONL session header supplies each pane's managed cwd when available; otherwise the OSC title's cwd basename is resolved only when it uniquely matches `git worktree list --porcelain` for the original checkout. The global cwd follows the focused validated worktree, including while Pi is hidden and you switch to file-tree or ordinary buffers. This synchronization does not set a window-local cwd. Buffers are kept around between toggles, so hiding the Pi area doesn't kill sessions or restore the cwd. Closing the final pane or exiting Neovim restores the original checkout.
 
 ## License
 

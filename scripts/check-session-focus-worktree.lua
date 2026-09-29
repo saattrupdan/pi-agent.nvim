@@ -214,6 +214,23 @@ local function run()
   -- Hiding and reopening restores the exact focused pane and its buffer.
   pi.close()
   assert_eq(#pi_windows(), 0, "hidden pane count")
+
+  -- A file-tree or ordinary buffer can change Neovim's global cwd while Pi is
+  -- hidden. The focused session's validated cwd remains authoritative across
+  -- directory and buffer/window transitions, without making the cwd window-local.
+  local tree_buf = vim.api.nvim_create_buf(true, false)
+  local file_buf = vim.api.nvim_create_buf(true, false)
+  vim.cmd("cd " .. vim.fn.fnameescape(base))
+  assert_eq(global_cwd(), worktree_two, "hidden cwd after directory change")
+  vim.api.nvim_set_current_buf(tree_buf)
+  assert_eq(global_cwd(), worktree_two, "hidden cwd in file-tree buffer")
+  vim.cmd("vsplit")
+  vim.api.nvim_set_current_buf(file_buf)
+  assert_eq(global_cwd(), worktree_two, "hidden cwd in file buffer")
+  vim.cmd("cd " .. vim.fn.fnameescape(base))
+  assert_eq(global_cwd(), worktree_two, "hidden cwd after window transition")
+  assert_eq(vim.fn.getcwd(), worktree_two, "hidden global cwd")
+
   pi.open()
   wait_for(function() return #pi_windows() == 2 end, "panes did not reopen")
   assert_eq(vim.api.nvim_get_current_buf(), second_buf, "restored focused buffer")

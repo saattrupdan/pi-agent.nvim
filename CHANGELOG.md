@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The focused validated worktree remains the global cwd while switching between
+  file-tree and ordinary buffers, even when the Pi float is hidden; synchronization
+  avoids introducing window-local cwd state or recursive `DirChanged` loops.
 - OSC titles now match the longest unambiguous known worktree basename, including
   basenames containing ` - `, without mistaking a conversation-name field for a
   cwd.
