@@ -194,9 +194,9 @@ local function run()
   vim.cmd("cd " .. vim.fn.fnameescape(base))
   assert_eq(global_cwd(), worktree_one, "active cwd persists after :cd")
   vim.api.nvim_win_call(first_win, function()
-    vim.cmd("lcd " .. vim.fn.fnameescape(worktree_two))
+    vim.cmd("lcd " .. vim.fn.fnameescape(worktree_one))
   end)
-  assert_eq(vim.fn.getcwd(), worktree_two, "window-local cwd")
+  assert_eq(vim.fn.getcwd(), worktree_one, "window-local cwd")
   assert_eq(global_cwd(), worktree_one, "global cwd before title move")
 
   -- A resume-style title can move the active pane between existing validated
@@ -216,21 +216,33 @@ local function run()
   pi.close()
   assert_eq(#pi_windows(), 0, "hidden pane count")
 
-  -- A file-tree or ordinary buffer can change Neovim's global cwd while Pi is
+  -- A file-tree or ordinary buffer can override the effective cwd while Pi is
   -- hidden. The focused session's validated cwd remains authoritative across
   -- directory and buffer/window transitions, without making the cwd window-local.
   local tree_buf = vim.api.nvim_create_buf(true, false)
   local file_buf = vim.api.nvim_create_buf(true, false)
-  vim.cmd("cd " .. vim.fn.fnameescape(base))
-  assert_eq(global_cwd(), worktree_two, "hidden cwd after directory change")
+  vim.cmd("lcd " .. vim.fn.fnameescape(base))
+  assert_eq(global_cwd(), worktree_two, "hidden global cwd after :lcd")
+  assert_eq(vim.fn.getcwd(), worktree_two, "effective cwd after hidden :lcd")
   vim.api.nvim_set_current_buf(tree_buf)
   assert_eq(global_cwd(), worktree_two, "hidden cwd in file-tree buffer")
+  assert_eq(vim.fn.getcwd(), worktree_two, "effective cwd in file-tree buffer")
+
   vim.cmd("vsplit")
   vim.api.nvim_set_current_buf(file_buf)
-  assert_eq(global_cwd(), worktree_two, "hidden cwd in file buffer")
-  vim.cmd("cd " .. vim.fn.fnameescape(base))
+  vim.cmd("lcd " .. vim.fn.fnameescape(base))
+  assert_eq(global_cwd(), worktree_two, "hidden global cwd before window transition")
+  assert_eq(vim.fn.getcwd(), worktree_two, "effective cwd before window transition")
+  local file_win = vim.api.nvim_get_current_win()
+  local tree_win
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if win ~= file_win then tree_win = win end
+  end
+  assert_true(tree_win ~= nil, "file-tree window disappeared")
+  vim.api.nvim_set_current_win(tree_win)
+  vim.api.nvim_set_current_win(file_win)
   assert_eq(global_cwd(), worktree_two, "hidden cwd after window transition")
-  assert_eq(vim.fn.getcwd(), worktree_two, "hidden global cwd")
+  assert_eq(vim.fn.getcwd(), worktree_two, "effective cwd after window transition")
 
   pi.open()
   wait_for(function() return #pi_windows() == 2 end, "panes did not reopen")

@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hidden-session cwd synchronization now corrects a mismatched window-local cwd
+  even when the global cwd already matches the focused worktree.
 - The focused validated worktree remains the global cwd while switching between
   file-tree and ordinary buffers, even when the Pi float is hidden; synchronization
   avoids introducing window-local cwd state or recursive `DirChanged` loops.
