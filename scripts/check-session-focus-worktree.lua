@@ -109,11 +109,13 @@ local function run()
   fake = tmp .. "/fake-pi"
   vim.fn.mkdir(outside, "p")
   vim.fn.writefile({ "seed" }, base .. "/seed")
+  vim.fn.writefile({ "base content" }, base .. "/shared.txt")
+  vim.fn.writefile({ "protected" }, base .. "/protected.txt")
 
   run_git(base, "init", "-q")
   run_git(base, "config", "user.email", "smoke@example.invalid")
   run_git(base, "config", "user.name", "Smoke Test")
-  run_git(base, "add", "seed")
+  run_git(base, "add", "seed", "shared.txt", "protected.txt")
   run_git(base, "commit", "-qm", "seed")
   vim.fn.writefile({
     "#!/bin/sh",
@@ -142,6 +144,8 @@ local function run()
   vim.env.PI_WORKTREE_ISOLATION_DISABLE = "1"
   vim.cmd("cd " .. vim.fn.fnameescape(base))
 
+  local tree_roots = {}
+  package.loaded["nvim-tree.api"] = { tree = { change_root = function(path) table.insert(tree_roots, path) end } }
   pi.setup({
     command = fake,
     width = 0.8,
@@ -243,6 +247,23 @@ local function run()
   vim.api.nvim_set_current_win(file_win)
   assert_eq(global_cwd(), worktree_two, "hidden cwd after window transition")
   assert_eq(vim.fn.getcwd(), worktree_two, "effective cwd after window transition")
+
+  local shared_buf = vim.fn.bufadd(base .. "/shared.txt")
+  vim.fn.bufload(shared_buf)
+  vim.api.nvim_set_current_buf(shared_buf)
+  assert_eq(vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()), worktree_two .. "/shared.txt", "base file follows hidden Pi worktree")
+  assert_eq(vim.fn.readfile(vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()))[1], "base content", "target content")
+  local modified_buf = vim.fn.bufadd(base .. "/protected.txt")
+  vim.fn.bufload(modified_buf)
+  vim.api.nvim_buf_set_lines(modified_buf, 0, -1, false, { "unsaved" })
+  vim.api.nvim_set_current_buf(modified_buf)
+  assert_true(vim.bo[modified_buf].modified, "modified buffer setup")
+  assert_eq(vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()), base .. "/protected.txt", "modified buffer is not remapped")
+  assert_true(#tree_roots > 0 and tree_roots[#tree_roots] == worktree_two, "optional tree root follows focused worktree")
+  local missing_buf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_name(missing_buf, base .. "/missing.txt")
+  vim.api.nvim_set_current_buf(missing_buf)
+  assert_eq(vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()), base .. "/missing.txt", "missing counterpart remains unmapped")
 
   pi.open()
   wait_for(function() return #pi_windows() == 2 end, "panes did not reopen")

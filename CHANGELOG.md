@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Ordinary buffers from the original checkout now follow the focused validated
+  Pi worktree when a matching file exists, and return to the base checkout when
+  the final pane exits. Modified, special, unrelated, and missing-counterpart
+  buffers are left untouched; optional nvim-tree rooting has no dependency.
 - Pi panes now synchronize focus and Neovim's global cwd with validated Git
   worktrees discovered from session headers or unique OSC-title basenames.
   Splits continue to launch from the original checkout, and hiding/reopening
