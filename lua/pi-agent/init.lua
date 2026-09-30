@@ -14,6 +14,8 @@ local state = {
   worktree_paths = nil,
   worktree_basenames = nil,
   worktree_snapshot_at = nil,
+  buffer_origins = {},
+  buffer_focus_sync = false,
 }
 
 local defaults = {
@@ -298,10 +300,73 @@ local function follow_session_cwd(session)
   state.syncing_cwd = false
 end
 
+local function sync_focused_file(session)
+  if state.buffer_focus_sync or not session or not state.base_cwd or not state.base_git_root then
+    return
+  end
+  local target_root = validated_worktree(session.cwd) or state.base_cwd
+  local ok, tree = pcall(require, "nvim-tree.api")
+  if ok and tree.tree and tree.tree.change_root then
+    pcall(tree.tree.change_root, target_root)
+  end
+  local win = vim.api.nvim_get_current_win()
+  local buf = vim.api.nvim_win_get_buf(win)
+  if not is_valid_buf(buf) or vim.bo[buf].buftype ~= "" or vim.bo[buf].modified then
+    return
+  end
+  local name = vim.api.nvim_buf_get_name(buf)
+  if name == "" then
+    return
+  end
+  local path = real_path(name)
+  local base = real_path(state.base_cwd)
+  local rel
+  if path == base then
+    rel = ""
+  elseif path and base and path:sub(1, #base + 1) == base .. "/" then
+    rel = path:sub(#base + 2)
+  end
+  local origin = state.buffer_origins[buf]
+  if rel ~= nil then
+    origin = rel
+    state.buffer_origins[buf] = rel
+  end
+  if origin == nil then
+    return
+  end
+  local target = origin == "" and target_root or (target_root .. "/" .. origin)
+  if vim.fn.filereadable(target) ~= 1 then
+    return
+  end
+  local target_real = real_path(target)
+  if path == target_real then
+    return
+  end
+  local target_buf
+  for _, candidate in ipairs(vim.api.nvim_list_bufs()) do
+    if is_valid_buf(candidate) and real_path(vim.api.nvim_buf_get_name(candidate)) == target_real then
+      target_buf = candidate
+      break
+    end
+  end
+  if not target_buf then
+    target_buf = vim.fn.bufadd(target)
+    vim.fn.bufload(target_buf)
+  end
+  if vim.bo[target_buf].modified then
+    return
+  end
+  state.buffer_origins[target_buf] = origin
+  state.buffer_focus_sync = true
+  pcall(vim.api.nvim_win_set_buf, win, target_buf)
+  state.buffer_focus_sync = false
+end
+
 local function follow_focused_session_cwd()
   local session = state.sessions[state.focused_id or state.current_id]
   if state.layout and session then
     follow_session_cwd(session)
+    sync_focused_file(session)
   end
 end
 
@@ -330,7 +395,11 @@ local function restore_base_cwd()
 end
 
 local function clear_lifecycle()
+  if state.base_cwd and state.base_git_root then
+    sync_focused_file({ cwd = state.base_cwd })
+  end
   restore_base_cwd()
+  state.buffer_origins = {}
   state.base_cwd = nil
   state.base_git_root = nil
   state.worktree_paths = nil
