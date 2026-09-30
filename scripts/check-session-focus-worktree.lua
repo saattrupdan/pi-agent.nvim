@@ -220,6 +220,42 @@ local function run()
   pi.close()
   assert_eq(#pi_windows(), 0, "hidden pane count")
 
+  -- Closing floats must immediately synchronize the ordinary file window that
+  -- is revealed, including transitions between different pane worktrees.
+  pi.open()
+  wait_for(function() return #pi_windows() == 2 end, "panes did not reopen for hide synchronization")
+  set_title(first_buf, "one", vim.fn.fnamemodify(worktree_one, ":t"))
+  for _, item in ipairs(pi_windows()) do
+    if item.buf == first_buf then vim.api.nvim_set_current_win(item.win) end
+  end
+  wait_for(function() return global_cwd() == worktree_one end, "first pane did not switch back to first worktree")
+  local base_file = vim.fn.bufadd(base .. "/shared.txt")
+  vim.fn.bufload(base_file)
+  local ordinary_win
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if not is_pi_buffer(vim.api.nvim_win_get_buf(win)) then
+      ordinary_win = win
+      break
+    end
+  end
+  assert_true(ordinary_win ~= nil, "ordinary file window disappeared")
+  vim.api.nvim_set_current_win(ordinary_win)
+  vim.api.nvim_win_set_buf(ordinary_win, base_file)
+  for _, item in ipairs(pi_windows()) do
+    if item.buf == first_buf then vim.api.nvim_set_current_win(item.win) end
+  end
+  pi.close()
+  assert_eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(ordinary_win)), worktree_one .. "/shared.txt", "hide synchronizes revealed file to first worktree")
+
+  pi.open()
+  wait_for(function() return #pi_windows() == 2 end, "panes did not reopen for second hide synchronization")
+  vim.api.nvim_win_set_buf(ordinary_win, base_file)
+  for _, item in ipairs(pi_windows()) do
+    if item.buf == second_buf then vim.api.nvim_set_current_win(item.win) end
+  end
+  pi.close()
+  assert_eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(ordinary_win)), worktree_two .. "/shared.txt", "hide synchronizes revealed file to second worktree")
+
   -- A file-tree or ordinary buffer can override the effective cwd while Pi is
   -- hidden. The focused session's validated cwd remains authoritative across
   -- directory and buffer/window transitions, without making the cwd window-local.
@@ -253,6 +289,15 @@ local function run()
   vim.api.nvim_set_current_buf(shared_buf)
   assert_eq(vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()), worktree_two .. "/shared.txt", "base file follows hidden Pi worktree")
   assert_eq(vim.fn.readfile(vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()))[1], "base content", "target content")
+
+  -- Renaming a tracked buffer to another existing path invalidates its old
+  -- origin; subsequent focus changes must not remap that unrelated path.
+  vim.fn.writefile({ "unrelated" }, outside .. "/shared.txt")
+  vim.api.nvim_buf_set_name(vim.api.nvim_get_current_buf(), outside .. "/shared.txt")
+  assert_eq(vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()), outside .. "/shared.txt", "renamed unrelated file remains untouched")
+  vim.api.nvim_set_current_win(tree_win)
+  vim.api.nvim_set_current_win(file_win)
+  assert_eq(vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()), outside .. "/shared.txt", "renamed path is not remapped")
   local modified_buf = vim.fn.bufadd(base .. "/protected.txt")
   vim.fn.bufload(modified_buf)
   vim.api.nvim_buf_set_lines(modified_buf, 0, -1, false, { "unsaved" })
@@ -298,6 +343,10 @@ local function run()
   assert_eq(global_cwd(), worktree_two, "cwd after surviving pane exit")
 
   -- Stop the remaining jobs: the final pane restores the original checkout.
+  vim.api.nvim_set_current_win(ordinary_win)
+  local restore_buf = vim.fn.bufadd(base .. "/shared.txt")
+  vim.fn.bufload(restore_buf)
+  vim.api.nvim_win_set_buf(ordinary_win, restore_buf)
   for _, buf in ipairs(pi_buffers()) do
     local job = pi_job(buf)
     if job > 0 then
@@ -306,6 +355,7 @@ local function run()
   end
   wait_for(function() return #pi_windows() == 0 end, "final pane did not exit")
   assert_eq(global_cwd(), base, "final cwd restoration")
+  assert_eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(ordinary_win)), base .. "/shared.txt", "final pane exit restores eligible file to base")
 
   -- Opening, hiding, and reopening must also work outside any Git repository.
   -- The launch must clear the parent identity and disable isolation only for

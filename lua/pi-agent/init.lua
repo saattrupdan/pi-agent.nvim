@@ -328,10 +328,15 @@ local function sync_focused_file(session)
   elseif path and base and path:sub(1, #base + 1) == base .. "/" then
     rel = path:sub(#base + 2)
   end
-  local origin = state.buffer_origins[buf]
+  local tracked = state.buffer_origins[buf]
+  if tracked and tracked.path ~= path then
+    state.buffer_origins[buf] = nil
+    tracked = nil
+  end
+  local origin = tracked and tracked.origin
   if rel ~= nil then
     origin = rel
-    state.buffer_origins[buf] = rel
+    state.buffer_origins[buf] = { origin = rel, path = path }
   end
   if origin == nil then
     return
@@ -358,7 +363,7 @@ local function sync_focused_file(session)
   if vim.bo[target_buf].modified then
     return
   end
-  state.buffer_origins[target_buf] = origin
+  state.buffer_origins[target_buf] = { origin = origin, path = target_real }
   state.buffer_focus_sync = true
   pcall(vim.api.nvim_win_set_buf, win, target_buf)
   state.buffer_focus_sync = false
@@ -1812,10 +1817,9 @@ function M.close()
   state.suppress_focus_events = previous_suppress
   state.visible = false
 
-  local session = state.sessions[state.focused_id or state.current_id]
-  if session then
-    follow_session_cwd(session)
-  end
+  -- Float teardown suppresses transient WinEnter events. Once all floats are
+  -- gone, explicitly sync the ordinary window Neovim revealed.
+  follow_focused_session_cwd()
 end
 
 function M.toggle()
