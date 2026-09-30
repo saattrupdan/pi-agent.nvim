@@ -305,13 +305,15 @@ local function sync_focused_file(session)
     return
   end
   local target_root = validated_worktree(session.cwd) or state.base_cwd
-  local ok, tree = pcall(require, "nvim-tree.api")
-  if ok and tree.tree and tree.tree.change_root then
+  local tree = package.loaded["nvim-tree.api"]
+  if tree and tree.tree and tree.tree.change_root then
+    state.buffer_focus_sync = true
     pcall(tree.tree.change_root, target_root)
+    state.buffer_focus_sync = false
   end
   local win = vim.api.nvim_get_current_win()
   local buf = vim.api.nvim_win_get_buf(win)
-  if not is_valid_buf(buf) or vim.bo[buf].buftype ~= "" or vim.bo[buf].modified then
+  if not vim.api.nvim_buf_is_valid(buf) or vim.bo[buf].buftype ~= "" or vim.bo[buf].modified then
     return
   end
   local name = vim.api.nvim_buf_get_name(buf)
@@ -344,7 +346,7 @@ local function sync_focused_file(session)
   end
   local target_buf
   for _, candidate in ipairs(vim.api.nvim_list_bufs()) do
-    if is_valid_buf(candidate) and real_path(vim.api.nvim_buf_get_name(candidate)) == target_real then
+    if vim.api.nvim_buf_is_valid(candidate) and real_path(vim.api.nvim_buf_get_name(candidate)) == target_real then
       target_buf = candidate
       break
     end
