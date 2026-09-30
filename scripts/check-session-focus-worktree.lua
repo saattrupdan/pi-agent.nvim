@@ -347,6 +347,7 @@ local function run()
   local restore_buf = vim.fn.bufadd(base .. "/shared.txt")
   vim.fn.bufload(restore_buf)
   vim.api.nvim_win_set_buf(ordinary_win, restore_buf)
+  assert_eq(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(ordinary_win)), worktree_two .. "/shared.txt", "file is in worktree before final exit")
   for _, buf in ipairs(pi_buffers()) do
     local job = pi_job(buf)
     if job > 0 then
