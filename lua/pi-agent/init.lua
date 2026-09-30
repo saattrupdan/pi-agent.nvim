@@ -288,7 +288,8 @@ end
 
 local function follow_session_cwd(session)
   local cwd = validated_worktree(session and session.cwd) or state.base_cwd
-  if not cwd or state.syncing_cwd or vim.fn.getcwd(-1, -1) == cwd then
+  if not cwd or state.syncing_cwd
+    or (vim.fn.getcwd(-1, -1) == cwd and vim.fn.getcwd() == cwd) then
     return
   end
 
