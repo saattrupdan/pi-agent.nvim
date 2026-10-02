@@ -18,7 +18,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 PI_AGENT_TEST_PID_FILE=$pid_file nvim --headless -u NONE \
-  --cmd "cd $root" -c "luafile $root/scripts/check-exit-process-group.lua"
+  -l "$root/scripts/check-exit-process-group.lua"
 
 child=$(cat "$pid_file")
 state=$(ps -o stat= -p "$child" 2>/dev/null | tr -d ' ' || true)

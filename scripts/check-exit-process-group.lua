@@ -24,5 +24,5 @@ local ready = vim.wait(5000, function()
 end, 20)
 assert(ready, "fake Pi descendant did not start")
 
--- This must run ExitPre and finish normally despite the live terminal job.
-vim.cmd("qa")
+-- Force quit skips the interactive terminal prompt but still runs ExitPre.
+vim.cmd("qa!")
