@@ -133,7 +133,7 @@ local function run()
     "fi",
     "printf '{\"type\":\"session\",\"cwd\":\"%s\"}\\n' \"$PWD\" > \"$PI_CODING_AGENT_SESSION_DIR/000_$id.jsonl\"",
     "(sleep 1; printf '{\"type\":\"session\",\"cwd\":\"%s\"}\\n' \"$PI_CODING_AGENT_DELAYED_CWD\" > \"$PI_CODING_AGENT_SESSION_DIR/000_$id.jsonl\") &",
-    "while IFS= read -r line; do :; done",
+    "while IFS= read -r line; do [ \"$line\" = /quit ] && exit 0; done",
   }, fake)
   vim.fn.setfperm(fake, "rwxr-xr-x")
   vim.env.PI_CODING_AGENT_SESSION_DIR = sessions
@@ -341,11 +341,11 @@ local function run()
   local exited_buf = first_buf
   local exited_job = pi_job(exited_buf)
   assert_true(exited_job > 0, "first pane has no job")
-  vim.fn.jobstop(exited_job)
+  vim.api.nvim_chan_send(exited_job, "/quit\r")
   wait_for(function() return #pi_windows() == 2 end, "surviving panes were not retained")
   assert_eq(global_cwd(), worktree_two, "cwd after surviving pane exit")
 
-  -- Stop the remaining jobs: the final pane restores the original checkout.
+  -- Exit the remaining jobs normally: the final pane restores the original checkout.
   vim.api.nvim_set_current_win(ordinary_win)
   local restore_buf = vim.fn.bufadd(base .. "/shared.txt")
   vim.fn.bufload(restore_buf)
@@ -354,7 +354,7 @@ local function run()
   for _, buf in ipairs(pi_buffers()) do
     local job = pi_job(buf)
     if job > 0 then
-      vim.fn.jobstop(job)
+      vim.api.nvim_chan_send(job, "/quit\r")
     end
   end
   wait_for(function() return #pi_windows() == 0 end, "final pane did not exit")
@@ -391,7 +391,7 @@ local function run()
   for _, buf in ipairs(pi_buffers()) do
     local job = pi_job(buf)
     if job > 0 then
-      vim.fn.jobstop(job)
+      vim.api.nvim_chan_send(job, "/quit\r")
     end
   end
   wait_for(function() return #pi_windows() == 0 end, "non-Git pane did not exit")
