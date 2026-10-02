@@ -10,6 +10,7 @@ vim.fn.writefile({
   "#!/bin/sh",
   "printf 'fake Pi started\\n'",
   'if [ "$PI_FAKE_SUCCESS" = 1 ]; then exit 0; fi',
+  'if [ "$PI_FAKE_WAIT" = 1 ]; then IFS= read -r command; exit 0; fi',
   'IFS= read -r command',
   'if [ "$command" = /resume ]; then printf "simulated resume failure\\n"; exit 17; fi',
   "exit 0",
@@ -96,6 +97,28 @@ local ok, err = xpcall(function()
   wait_for(function()
     return not vim.api.nvim_buf_is_valid(failed_buf)
   end, "failed pane closed")
+
+  pi.config.command = "PI_FAKE_WAIT=1 " .. fake_pi
+  pi.open()
+  local stale_job_buf = pi_buffers()[1]
+  local original_jobpid = vim.fn.jobpid
+  local jobpid_called = false
+  vim.fn.jobpid = function()
+    jobpid_called = true
+    error("E900: Invalid channel id")
+  end
+  local original_confirm = vim.fn.confirm
+  vim.fn.confirm = function()
+    return 1
+  end
+  local close_ok, close_err = pcall(pi.close_pane)
+  vim.fn.confirm = original_confirm
+  vim.fn.jobpid = original_jobpid
+  assert_true(close_ok, "close tolerates an invalid job channel: " .. tostring(close_err))
+  assert_true(jobpid_called, "close checks the stale job channel")
+  wait_for(function()
+    return not vim.api.nvim_buf_is_valid(stale_job_buf)
+  end, "pane closed after invalid job channel")
 
   pi.config.command = "PI_FAKE_SUCCESS=1 " .. fake_pi
   pi.open()
