@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Nonzero Pi exits now preserve the terminal pane and output with an exit-code
+  notification and close/restart guidance; successful exits still clean up.
 - Pi panes use regular TUI mode so Neovim can scroll through terminal history
   after Pi changed its default to fullscreen.
 - Hidden-session cwd synchronization now corrects a mismatched window-local cwd
