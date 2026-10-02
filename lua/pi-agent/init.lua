@@ -1756,12 +1756,14 @@ local function stop_session_job(session)
     return
   end
 
-  local pid = vim.fn.jobpid(job)
-  local group = process_group(pid)
-  local uv = vim.loop or vim.uv
-  local own_group = process_group(uv.os_getpid())
-  if group and group == pid and group ~= own_group then
-    pcall(uv.kill, -group, 15)
+  local ok, pid = pcall(vim.fn.jobpid, job)
+  if ok then
+    local group = process_group(pid)
+    local uv = vim.loop or vim.uv
+    local own_group = process_group(uv.os_getpid())
+    if group and group == pid and group ~= own_group then
+      pcall(uv.kill, -group, 15)
+    end
   end
   pcall(vim.fn.jobstop, job)
 end
