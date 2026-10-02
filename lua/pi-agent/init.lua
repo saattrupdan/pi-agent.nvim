@@ -1466,10 +1466,14 @@ end
 
 local function setup_session_autocmds(session)
   local group = vim.api.nvim_create_augroup("PiAgentBuffer" .. session.id, { clear = true })
+  session.augroup = group
 
   vim.api.nvim_buf_attach(session.buf, false, {
     on_lines = function()
       vim.schedule(function()
+        if session.closing or not is_valid_buf(session.buf) or not is_valid_win(session.win) then
+          return
+        end
         if vim.api.nvim_get_current_win() == session.win then
           if session.view then
             restore_browsing_view(session)
@@ -1641,6 +1645,7 @@ local function create_session()
     session_mtime = nil,
     session_size = nil,
     name_timer = nil,
+    augroup = nil,
     marker_path = marker_path,
     -- Only consider Pi session files touched at or after this; avoids picking up
     -- a stale name from an earlier session in the same cwd.
@@ -1664,12 +1669,28 @@ local function create_session()
     session.job = vim.fn.termopen(cmd, {
       cwd = cwd,
       env = terminal_env(),
-      on_exit = function()
+      on_exit = function(_, exit_code)
         vim.schedule(function()
-          if session.closing then
+          if session.closing or state.sessions[id] ~= session then
             return
           end
-          remove_session(id, false)
+          session.job = nil
+          if exit_code == 0 then
+            remove_session(id, false)
+            return
+          end
+
+          if session.name_timer then
+            pcall(vim.fn.timer_stop, session.name_timer)
+            session.name_timer = nil
+          end
+          vim.notify(
+            string.format(
+              "Pi exited with code %s. Output is preserved; close with <C-x>, then reopen with :PiAgentOpen to restart.",
+              tostring(exit_code)
+            ),
+            vim.log.levels.ERROR
+          )
         end)
       end,
     })
@@ -1738,6 +1759,10 @@ remove_session = function(id, stop_job)
   state.suppress_focus_events = true
   if is_valid_win(session.win) then
     pcall(vim.api.nvim_win_close, session.win, true)
+  end
+  if session.augroup then
+    pcall(vim.api.nvim_del_augroup_by_id, session.augroup)
+    session.augroup = nil
   end
   if stop_job and session.job then
     pcall(vim.fn.jobstop, session.job)
@@ -1960,6 +1985,10 @@ function M.setup(opts)
         if session.job then
           pcall(vim.fn.jobstop, session.job)
           session.job = nil
+        end
+        if session.augroup then
+          pcall(vim.api.nvim_del_augroup_by_id, session.augroup)
+          session.augroup = nil
         end
         if is_valid_buf(session.buf) then
           pcall(vim.api.nvim_buf_delete, session.buf, { force = true })
