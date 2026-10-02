@@ -120,10 +120,13 @@ local function run()
   vim.fn.writefile({
     "#!/bin/sh",
     "id=unknown",
+    "mode=",
     "while [ $# -gt 0 ]; do",
     "  if [ \"$1\" = \"--session-id\" ]; then id=$2; shift; fi",
+    "  if [ \"$1\" = \"--tui-mode\" ]; then mode=$2; shift; fi",
     "  shift",
     "done",
+    "[ \"$mode\" = regular ] || exit 3",
     "printf '%s|%s|%s|%s|%s\\n' \"$PWD\" \"${PI_WORKTREE_SESSION_MANIFEST:-}\" \"${PI_SESSION_FILE:-}\" \"${PI_SESSION_ID:-}\" \"${PI_WORKTREE_ISOLATION_DISABLE:-}\" >> \"$PI_CODING_AGENT_LOG\"",
     "if [ -n \"${PI_WORKTREE_SESSION_MANIFEST:-}\" ] || [ -n \"${PI_SESSION_FILE:-}\" ] || [ -n \"${PI_SESSION_ID:-}\" ]; then",
     "  exit 2",

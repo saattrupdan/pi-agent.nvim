@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Pi panes use regular TUI mode so Neovim can scroll through terminal history
+  after Pi changed its default to fullscreen.
 - Hidden-session cwd synchronization now corrects a mismatched window-local cwd
   even when the global cwd already matches the focused worktree.
 - The focused validated worktree remains the global cwd while switching between

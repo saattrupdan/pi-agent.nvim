@@ -1657,7 +1657,9 @@ local function create_session()
 
   -- Build the command with a per-pane session ID so title polling reads the
   -- exact JSONL file for this pane instead of whichever session was newest.
-  local cmd = M.config.command .. " --session-id " .. session_id
+  -- Pi's fullscreen viewport redraws in place, leaving Neovim no terminal
+  -- scrollback for normal-mode browsing inside the pane.
+  local cmd = M.config.command .. " --tui-mode regular --session-id " .. session_id
   vim.api.nvim_buf_call(session.buf, function()
     session.job = vim.fn.termopen(cmd, {
       cwd = cwd,
