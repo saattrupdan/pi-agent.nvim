@@ -1742,6 +1742,30 @@ render_layout = function(focus_id)
   focus_session(focus_id or state.focused_id or state.current_id or first_leaf(state.layout), in_terminal_mode())
 end
 
+local function process_group(pid)
+  if not pid or pid <= 0 then
+    return nil
+  end
+  local output = vim.fn.system({ "ps", "-o", "pgid=", "-p", tostring(pid) })
+  return tonumber(output:match("%d+"))
+end
+
+local function stop_session_job(session)
+  local job = session.job
+  if not job then
+    return
+  end
+
+  local pid = vim.fn.jobpid(job)
+  local group = process_group(pid)
+  local uv = vim.loop or vim.uv
+  local own_group = process_group(uv.os_getpid())
+  if group and group == pid and group ~= own_group then
+    pcall(uv.kill, -group, 15)
+  end
+  pcall(vim.fn.jobstop, job)
+end
+
 remove_session = function(id, stop_job)
   local session = state.sessions[id]
   if not session then
@@ -1765,7 +1789,7 @@ remove_session = function(id, stop_job)
     session.augroup = nil
   end
   if stop_job and session.job then
-    pcall(vim.fn.jobstop, session.job)
+    stop_session_job(session)
   end
   if is_valid_buf(session.buf) then
     pcall(vim.api.nvim_buf_delete, session.buf, { force = true })
@@ -1983,7 +2007,7 @@ function M.setup(opts)
           session.name_timer = nil
         end
         if session.job then
-          pcall(vim.fn.jobstop, session.job)
+          stop_session_job(session)
           session.job = nil
         end
         if session.augroup then

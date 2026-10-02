@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Exiting Neovim or explicitly closing a Pi pane now terminates the Pi job's
+  POSIX process group, including nested Pi descendants, while preserving normal
+  terminal-job cleanup.
 - Nonzero Pi exits now preserve the terminal pane and output with an exit-code
   notification and close/restart guidance; successful exits still clean up.
 - Pi panes use regular TUI mode so Neovim can scroll through terminal history
