@@ -693,11 +693,6 @@ local function remember_view_if_browsing(session)
     end
     return
   end
-  if in_terminal_mode() then
-    session.view = nil
-    return
-  end
-
   vim.api.nvim_win_call(session.win, function()
     if vim.fn.line("w$") >= vim.fn.line("$") then
       session.view = nil
@@ -708,7 +703,7 @@ local function remember_view_if_browsing(session)
 end
 
 local function restore_browsing_view(session)
-  if not session or not session.view or not is_valid_win(session.win) or in_terminal_mode() then
+  if not session or not session.view or not is_valid_win(session.win) then
     return
   end
 
@@ -1470,22 +1465,18 @@ local function setup_session_autocmds(session)
 
   vim.api.nvim_buf_attach(session.buf, false, {
     on_lines = function()
+      session.output_pending = (session.output_pending or 0) + 1
       vim.schedule(function()
         if session.closing or not is_valid_buf(session.buf) or not is_valid_win(session.win) then
+          session.output_pending = math.max(0, session.output_pending - 1)
           return
         end
-        if vim.api.nvim_get_current_win() == session.win then
-          if session.view then
-            restore_browsing_view(session)
-          elseif not in_terminal_mode() then
-            -- In normal mode: don't auto-scroll, stay where the cursor is
-          else
-            -- In terminal mode: follow new output
-            follow_output(session)
-          end
-        else
+        if session.view then
+          restore_browsing_view(session)
+        elseif vim.api.nvim_get_current_win() ~= session.win or in_terminal_mode() then
           follow_output(session)
         end
+        session.output_pending = math.max(0, session.output_pending - 1)
       end)
     end,
     on_detach = function()
@@ -1504,13 +1495,14 @@ local function setup_session_autocmds(session)
     group = group,
     buffer = session.buf,
     callback = function()
+      -- Returning to the prompt means the user is ready to follow/type again.
       session.view = nil
     end,
   })
   vim.api.nvim_create_autocmd("WinScrolled", {
     group = group,
     callback = function(event)
-      if tonumber(event.match) == session.win then
+      if tonumber(event.match) == session.win and (session.output_pending or 0) == 0 then
         remember_view_if_browsing(session)
       end
     end,

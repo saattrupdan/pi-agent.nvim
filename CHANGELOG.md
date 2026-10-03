@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Terminal-mode scrollback browsing now stays in place while Pi streams output,
+  and following resumes when returning to the bottom or prompt. Added a focused
+  headless fake-output regression script under `scripts`.
 - Closing a Pi pane or exiting Neovim tolerates a job channel that became invalid
   before its scheduled exit callback ran, while retaining process-group cleanup
   when the job PID is available.
