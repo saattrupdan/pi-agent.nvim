@@ -11,6 +11,7 @@ A tiny Neovim plugin that opens your [Pi](https://github.com/) agent in a center
 - Follows the focused session's validated Git worktree in Neovim's global cwd, including delayed session metadata and resume/title changes
 - Multiple Pi terminal sessions in tiled floating panes
 - Toggle in and out — all `pi` sessions persist across toggles, restoring the exact focused pane and terminal buffer until you close their pane or exit Pi
+- Browse terminal scrollback while Pi streams output; new output preserves your browsed position and following resumes at the bottom or when returning to the prompt
 - Configurable size, border, and command
 
 ## Requirements
@@ -121,6 +122,8 @@ Inside the agent buffer, `<C-l>` sends `/new` to Pi so you can start a fresh ses
 ## How it works
 
 When the first Pi pane is created, the plugin captures the original Git checkout (or global `cwd` outside Git). Every later split is launched from that checkout, never from a followed worktree. Pi's JSONL session header supplies each pane's managed cwd when available; otherwise the OSC title's cwd basename is resolved only when it uniquely matches `git worktree list --porcelain` for the original checkout. The global cwd follows the focused validated worktree, including while Pi is hidden and you switch to file-tree or ordinary buffers. When an ordinary file buffer under the original checkout is focused, it follows to the matching existing file in the focused validated worktree; switching worktrees follows the same file across checkouts, and closing the final pane restores the base-checkout counterpart. Modified buffers, unnamed/special buffers, paths outside the original checkout, and files without an existing counterpart are left alone. The plugin never overwrites modified buffers or creates a missing file, and only tracks base-checkout buffers it sees during the Pi lifecycle; independently opened unrelated files are not remapped. An already-loaded `nvim-tree` API, if present, is asked to root at the focused worktree, with no plugin dependency. This synchronization does not set a window-local cwd or steal window focus. Buffers are kept around between toggles, so hiding the Pi area doesn't kill sessions or restore the cwd. Closing the final pane or exiting Neovim restores the original checkout.
+
+Scrollback browsing preserves the window view while output arrives, without editing Pi's live terminal buffer. A Pi renderer full redraw (for example, one that clears scrollback with CSI 3J) can erase history independently; the plugin cannot restore lines removed by Pi.
 
 ## License
 
