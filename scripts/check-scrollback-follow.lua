@@ -54,6 +54,10 @@ local ok, err = xpcall(function()
     return vim.api.nvim_buf_line_count(buf) >= 80
   end, "initial terminal output")
 
+  -- Headless Neovim cannot enter terminal-input mode; make the plugin observe
+  -- terminal mode while testing wheel-scroll and streaming callbacks.
+  local get_mode = vim.api.nvim_get_mode
+  vim.api.nvim_get_mode = function() return { mode = "t" } end
   -- Simulate a user scrollback position, including the WinScrolled event Neovim
   -- emits for mouse-wheel scrolling in terminal mode.
   vim.api.nvim_win_call(win, function()
@@ -100,13 +104,13 @@ local ok, err = xpcall(function()
     return vim.fn.line("w$") >= vim.fn.line("$")
   end)
   assert_true(bottom, "output follows when browsing hold is released")
+  vim.api.nvim_get_mode = get_mode
 
   pi.close()
   vim.cmd("qa!")
 end, debug.traceback)
 
 if not ok then
-  pcall(function() pi.close() end)
-  pcall(vim.cmd, "qa!")
-  error(err)
+  print(err)
+  os.exit(1)
 end

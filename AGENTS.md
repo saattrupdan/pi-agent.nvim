@@ -5,7 +5,7 @@ Neovim plugin that opens the `pi` CLI in a centered floating terminal, rooted at
 ## Stack
 
 - Lua, targeting Neovim 0.9+ (uses `vim.keymap.set`, `vim.api.nvim_open_win`, `vim.fn.termopen`).
-- No package manager, no tests, no CI.
+- No package manager or CI; headless Neovim regression scripts live in `scripts/`.
 
 ## Layout
 
@@ -15,12 +15,12 @@ Neovim plugin that opens the `pi` CLI in a centered floating terminal, rooted at
 
 ## Running it
 
-There is no dev server. To exercise changes locally, point a Neovim config at the working tree, e.g. via lazy.nvim's `dir = "/path/to/pi-agent.nvim"`, then `:PiAgent`.
+There is no dev server. Run `for script in scripts/check-*.sh; do sh "$script"; done` for headless regression checks. To exercise the plugin interactively, point a Neovim config at the working tree, e.g. via lazy.nvim's `dir = "/path/to/pi-agent.nvim"`, then `:PiAgent`.
 
 ## Conventions
 
 - Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`). See `git log` for prior style.
-- Every change is committed *and pushed* in the same step — see the user's memory note.
+- Work directly on `main`; do not create feature branches or worktree builders for this repository. Commit and push each change to `origin/main` in the same step. If the agent starts in a managed detached worktree, apply the validated commit to the primary `main` checkout, push it, and leave the managed worktree clean; never change Pi worktree metadata.
 - Update `CHANGELOG.md` under `## [Unreleased]` for user-visible changes; cut a new version section on release.
 - Keep comments minimal; prefer naming. Existing comments explain *why* (e.g. the `<C-o>` forward, the `ExitPre` hook).
 
