@@ -1616,15 +1616,12 @@ end
 
 local function publish_iterm_status()
   if vim.env.TERM_PROGRAM ~= "iTerm.app" or not vim.env.ITERM_SESSION_ID
-    or vim.env.ITERM_SESSION_ID == "" or (vim.env.TMUX and vim.env.TMUX ~= "") then
+    or vim.env.ITERM_SESSION_ID == "" or (vim.env.TMUX and vim.env.TMUX ~= "")
+    or #vim.api.nvim_list_uis() == 0 then
     return
   end
   local status = aggregate_status()
   if status == state.iterm_status then
-    return
-  end
-  local tty = io.open("/dev/tty", "w")
-  if not tty then
     return
   end
   local value = ITERM_STATUSES[status]
@@ -1641,11 +1638,10 @@ local function publish_iterm_status()
     icon = "\27]1337;SetProfileProperty=Icon=MQ==\7"
   end
   -- iTerm2 may pause profile changes for approval; publish status first.
-  local ok = tty:write("\27]21337;" .. payload .. "\7" .. icon)
+  local ok = io.stdout:write("\27]21337;" .. payload .. "\7" .. icon)
   if ok then
-    ok = tty:flush()
+    ok = io.stdout:flush()
   end
-  tty:close()
   if ok then
     state.iterm_status = status
   end

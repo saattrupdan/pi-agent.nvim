@@ -26,17 +26,14 @@ local previous_tmux = vim.env.TMUX
 vim.env.TMUX = nil
 vim.env.TERM_PROGRAM = "iTerm.app"
 vim.env.ITERM_SESSION_ID = "test-iterm-session"
-local original_open = io.open
+local original_stdout = io.stdout
+local original_list_uis = vim.api.nvim_list_uis
+vim.api.nvim_list_uis = function() return { { chan = 1 } } end
 local output = {}
-io.open = function(path, mode)
-  if path ~= "/dev/tty" then return original_open(path, mode) end
-  assert(mode == "w")
-  return {
-    write = function(_, text) table.insert(output, text); return true end,
-    flush = function() return true end,
-    close = function() return true end,
-  }
-end
+io.stdout = {
+  write = function(_, text) table.insert(output, text); return true end,
+  flush = function() return true end,
+}
 
 local function assert_true(value, label)
   if not value then error("assertion failed: " .. label) end
@@ -114,9 +111,17 @@ local ok, err = xpcall(function()
   pi.close_pane()
   vim.fn.confirm = confirm
   assert_true(#output == count, "tmux does not receive direct iTerm2 control sequences")
+  vim.env.TMUX = nil
+  vim.api.nvim_list_uis = original_list_uis
+  pi.open()
+  vim.fn.confirm = function() return 1 end
+  pi.close_pane()
+  vim.fn.confirm = confirm
+  assert_true(#output == count, "headless checks do not alter the enclosing iTerm2 tab")
 end, debug.traceback)
 
-io.open = original_open
+io.stdout = original_stdout
+vim.api.nvim_list_uis = original_list_uis
 vim.env.TERM_PROGRAM = previous_term
 vim.env.ITERM_SESSION_ID = previous_id
 vim.env.TMUX = previous_tmux

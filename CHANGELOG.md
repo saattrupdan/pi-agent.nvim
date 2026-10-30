@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- iTerm2 status and icon now use Neovim's terminal stdout; full-screen
+  Neovim has no controlling `/dev/tty`, so neither update arrived before.
 - iTerm2 status now appears before the Pi icon's first-use permission prompt
   can pause further terminal control sequences.
 - Terminal-mode scrollback browsing now stays in place while Pi streams output,
