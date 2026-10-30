@@ -9,10 +9,12 @@ local fake_pi = vim.fn.tempname()
 vim.fn.writefile({
   "#!/bin/sh",
   'printf idle > "$PI_AGENT_STATUS_FILE"',
+  'completed=0',
   'while IFS= read -r command; do',
   '  case "$command" in',
   '    *need*) printf need_input > "$PI_AGENT_STATUS_FILE" ;;',
   '    *work*) printf working > "$PI_AGENT_STATUS_FILE" ;;',
+  '    *finish*) completed=$((completed + 1)); printf "finished:%s" "$completed" > "$PI_AGENT_STATUS_FILE" ;;',
   '    *idle*) printf idle > "$PI_AGENT_STATUS_FILE" ;;',
   '    *fail*) exit 17 ;;',
   '  esac',
@@ -55,15 +57,13 @@ local ok, err = xpcall(function()
   pi.setup({ command = fake_pi, keymap = false })
   pi.open()
   local first = vim.api.nvim_get_current_buf()
-  assert_true(status() == "Starting", "first Pi pane starts iTerm status")
+  assert_true(status() == "Idle", "new Pi pane is idle before its first response")
   assert_true(output[1]:sub(1, 8) == "\27]21337;", "status precedes permission-gated icon update")
   assert_true(output[1]:find("SetProfileProperty=Icon=Mg==;Custom Icon Path=", 1, true), "Pi icon installed")
   local encoded_icon = output[1]:match("Custom Icon Path=([^\7]+)")
   local icon_path = vim.json.decode(vim.fn.system({ "base64", "-D" }, encoded_icon))
   assert_true(icon_path == root .. "/media/pi-tab-icon.png", "icon uses bundled Pi logo")
-  assert_true(output[1]:find("status%-color=#8e8e93") ~= nil, "starting color")
-  wait_for(function() return status() == "Idle" end, "first Pi idle")
-  assert_true(not output[#output]:find("SetProfileProperty", 1, true), "icon set only once")
+  assert_true(output[1]:find("indicator=;status-color=", 1, true), "initial idle has no colored dot")
 
   pi.split()
   local second = vim.api.nvim_get_current_buf()
@@ -71,6 +71,7 @@ local ok, err = xpcall(function()
   wait_for(function() return status() == "Idle" end, "both idle")
   send(first, "work")
   wait_for(function() return status() == "Working" end, "one working")
+  assert_true(not output[#output]:find("SetProfileProperty", 1, true), "icon set only once")
   send(second, "need")
   wait_for(function() return status() == "Need input" end, "input takes priority")
   assert_true(output[#output]:find("indicator=#ff453a", 1, true), "input indicator color")
@@ -78,10 +79,34 @@ local ok, err = xpcall(function()
   wait_for(function() return status() == "Working" end, "working after input resolves")
 
   pi.close()
-  send(first, "idle")
-  wait_for(function() return status() == "Idle" end, "hidden panes keep status current")
+  send(first, "finish")
+  wait_for(function() return status() == "Idle" end, "completion in active tab stays idle")
   pi.open()
   assert_true(status() == "Idle", "reopening keeps aggregate state")
+
+  send(first, "work")
+  wait_for(function() return status() == "Working" end, "new response starts working")
+  vim.api.nvim_exec_autocmds("FocusLost", {})
+  send(first, "finish")
+  wait_for(function() return status() == "Finished" end, "background completion is finished")
+  assert_true(output[#output]:find("indicator=#30d158", 1, true), "only finished has green dot")
+  vim.api.nvim_exec_autocmds("FocusGained", {})
+  assert_true(status() == "Idle", "selecting finished tab acknowledges completion")
+  assert_true(output[#output]:find("indicator=;status-color=", 1, true), "acknowledged idle has no dot")
+  vim.wait(700)
+  assert_true(status() == "Idle", "acknowledged completion does not reappear on poll")
+
+  send(first, "work")
+  wait_for(function() return status() == "Working" end, "subsequent response starts working")
+  vim.api.nvim_exec_autocmds("FocusLost", {})
+  send(first, "finish")
+  wait_for(function() return status() == "Finished" end, "subsequent background completion is distinct")
+  send(second, "work")
+  wait_for(function() return status() == "Working" end, "working outranks another finished pane")
+  send(second, "finish")
+  wait_for(function() return status() == "Finished" end, "multiple completed panes aggregate as finished")
+  vim.api.nvim_exec_autocmds("FocusGained", {})
+  assert_true(status() == "Idle", "tab activation acknowledges all completed panes")
 
   send(first, "fail")
   wait_for(function() return status() == "Error" end, "failed Pi pane")

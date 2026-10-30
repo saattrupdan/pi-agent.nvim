@@ -11,7 +11,7 @@ A tiny Neovim plugin that opens your [Pi](https://github.com/) agent in a center
 - Follows the focused session's validated Git worktree in Neovim's global cwd, including delayed session metadata and resume/title changes
 - Multiple Pi terminal sessions in tiled floating panes
 - Direct iTerm2 vertical tabs show one aggregate Pi status (Need input, Working,
-  Idle, Starting, or Error) and the Pi logo while any pane is running
+  Error, Finished, or Idle) and the Pi logo while any pane is running
 - Toggle in and out — all `pi` sessions persist across toggles, restoring the exact focused pane and terminal buffer until you close their pane or exit Pi
 - Browse terminal scrollback while Pi streams output; new output preserves your browsed position and following resumes at the bottom or when returning to the prompt
 - Configurable size, border, and command
@@ -114,12 +114,13 @@ Pi panes use buffer-local mappings, so they only apply inside visible Pi termina
 Splits preserve the current session and open a new Pi session in the new pane. Landscape panes split vertically (side-by-side); visually portrait/narrow panes split horizontally (top/bottom). When multiple panes are visible, the active pane is marked by a highlighted border/title. Closing a pane asks for a one-key confirmation, then stops only that pane's Pi job and collapses the layout so the neighbor consumes the space.
 
 When Neovim runs directly in iTerm2 (not inside tmux), the enclosing vertical
-tab shows one status and colored dot for all Pi
-panes, without conversation titles: Need input if any pane has a blocking prompt,
-otherwise Working if any is running, Error if a pane failed, Starting while a
-pane launches, and Idle once all panes are idle. Hiding the Pi area does not stop
-these updates. The tab uses the same Pi mark as the splash screen instead of
-Neovim's icon while panes exist. On the last pane's close or Neovim exit, the
+tab shows one aggregate status for all Pi panes, without conversation titles: Need input if any pane has a blocking prompt,
+otherwise Working if any is running, Error if a pane failed, Finished with a
+green dot if a response completed while the iTerm2 tab was inactive, or Idle
+without a dot. New panes start Idle; completing a response in the active tab
+stays Idle. Selecting a Finished tab acknowledges all completions and returns
+to Idle. Hiding the Pi area does not stop these updates. The tab uses the same
+Pi mark as the splash screen instead of Neovim's icon while panes exist. On the last pane's close or Neovim exit, the
 plugin clears its status and restores iTerm2's automatic app icon. iTerm2 asks
 you to approve the session-local icon change the first time it is made; choose
 **Allow Always** so it can also restore the icon on exit. No iTerm2 Python API

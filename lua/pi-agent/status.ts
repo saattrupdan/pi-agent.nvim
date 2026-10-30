@@ -7,10 +7,19 @@ export default function (pi: ExtensionAPI) {
 
   let working = false;
   let awaitingInput = false;
+  let completedRuns = 0;
+  let finished = false;
 
   function publish() {
     try {
-      writeFileSync(path, awaitingInput ? "need_input" : working ? "working" : "idle");
+      const status = awaitingInput
+        ? "need_input"
+        : working
+          ? "working"
+          : finished
+            ? `finished:${completedRuns}`
+            : "idle";
+      writeFileSync(path, status);
     } catch {
       // An unavailable status file must not interrupt Pi.
     }
@@ -20,14 +29,18 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", () => {
     working = false;
     awaitingInput = false;
+    finished = false;
     publish();
   });
   pi.on("agent_start", () => {
     working = true;
+    finished = false;
     publish();
   });
   pi.on("agent_end", () => {
     working = false;
+    finished = true;
+    completedRuns += 1;
     publish();
   });
   pi.on("ui_prompt_start", () => {

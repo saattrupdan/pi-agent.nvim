@@ -17,6 +17,7 @@ local state = {
   buffer_origins = {},
   buffer_focus_sync = false,
   iterm_status = nil,
+  tab_active = true,
 }
 
 local defaults = {
@@ -39,7 +40,8 @@ local STATUS_EXTENSION = PLUGIN_ROOT .. "/lua/pi-agent/status.ts"
 local ICON_PATH = PLUGIN_ROOT .. "/media/pi-tab-icon.png"
 local ITERM_STATUSES = {
   starting = { text = "Starting", color = "#8e8e93" },
-  idle = { text = "Idle", color = "#30d158" },
+  idle = { text = "Idle", color = "" },
+  finished = { text = "Finished", color = "#30d158" },
   working = { text = "Working", color = "#ff9f0a" },
   need_input = { text = "Need input", color = "#ff453a" },
   error = { text = "Error", color = "#ff3b30" },
@@ -1606,7 +1608,7 @@ local function aggregate_status()
   for _, session in pairs(state.sessions) do
     statuses[session.status] = true
   end
-  for _, status in ipairs({ "need_input", "working", "error", "starting", "idle" }) do
+  for _, status in ipairs({ "need_input", "working", "error", "starting", "finished", "idle" }) do
     if statuses[status] then
       return status
     end
@@ -1655,9 +1657,19 @@ local function refresh_session_status(session)
   if not file then
     return
   end
-  local status = file:read("*a")
+  local raw = file:read("*a")
   file:close()
-  status = status and status:match("^([a-z_]+)%s*$")
+  local status, completion
+  if raw then
+    status, completion = raw:match("^([a-z_]+):?(%d*)%s*$")
+  end
+  if status == "finished" then
+    if completion == "" or completion == session.last_completion then
+      return
+    end
+    session.last_completion = completion
+    status = state.tab_active and "idle" or "finished"
+  end
   if ITERM_STATUSES[status] and session.status ~= status then
     session.status = status
     publish_iterm_status()
@@ -1711,7 +1723,8 @@ local function create_session()
     launch_cwd = cwd,
     session_id = session_id,
     status_path = status_path,
-    status = "starting",
+    status = "idle",
+    last_completion = nil,
     session_file = nil,
     session_mtime = nil,
     session_size = nil,
@@ -2036,6 +2049,28 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("PiAgentClose", M.close, {})
 
   local group = vim.api.nvim_create_augroup("PiAgent", { clear = true })
+
+  vim.api.nvim_create_autocmd("FocusLost", {
+    group = group,
+    callback = function()
+      each_session(refresh_session_status)
+      state.tab_active = false
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("FocusGained", {
+    group = group,
+    callback = function()
+      each_session(refresh_session_status)
+      state.tab_active = true
+      each_session(function(session)
+        if session.status == "finished" then
+          session.status = "idle"
+        end
+      end)
+      publish_iterm_status()
+    end,
+  })
 
   vim.api.nvim_create_autocmd("VimResized", {
     group = group,

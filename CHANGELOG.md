@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Direct iTerm2 vertical tabs now show one colored aggregate Pi status across all
-  panes (Need input, Working, Error, Starting, or Idle), and show the Pi splash
+  panes (Need input, Working, Error, Finished, or Idle), and show the Pi splash
   logo instead of Neovim's app icon while Pi panes run. Both reset on exit.
 - Ordinary buffers from the original checkout now follow the focused validated
   Pi worktree when a matching file exists, and return to the base checkout when
@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Splits continue to launch from the original checkout, and hiding/reopening
   restores the exact focused terminal buffer.
 - Added a self-contained headless worktree/focus smoke script under `scripts`.
+
+### Changed
+
+- New Pi panes start Idle without a dot. Only a response completed while its
+  iTerm2 tab is inactive shows Finished with a green dot; selecting the tab
+  acknowledges Finished back to Idle. All Pi panes share this tab status.
 
 ### Fixed
 
