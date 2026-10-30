@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Direct iTerm2 vertical tabs now show one colored aggregate Pi status across all
+  panes (Need input, Working, Error, Starting, or Idle), and show the Pi splash
+  logo instead of Neovim's app icon while Pi panes run. Both reset on exit.
 - Ordinary buffers from the original checkout now follow the focused validated
   Pi worktree when a matching file exists, and return to the base checkout when
   the final pane exits. Modified, special, unrelated, and missing-counterpart

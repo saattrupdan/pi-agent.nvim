@@ -16,6 +16,7 @@ local state = {
   worktree_snapshot_at = nil,
   buffer_origins = {},
   buffer_focus_sync = false,
+  iterm_status = nil,
 }
 
 local defaults = {
@@ -33,6 +34,16 @@ M.config = vim.deepcopy(defaults)
 
 local ACTIVE_BORDER = "PiAgentActiveBorder"
 local ACTIVE_TITLE = "PiAgentActiveTitle"
+local PLUGIN_ROOT = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h")
+local STATUS_EXTENSION = PLUGIN_ROOT .. "/lua/pi-agent/status.ts"
+local ICON_PATH = PLUGIN_ROOT .. "/media/pi-tab-icon.png"
+local ITERM_STATUSES = {
+  starting = { text = "Starting", color = "#8e8e93" },
+  idle = { text = "Idle", color = "#30d158" },
+  working = { text = "Working", color = "#ff9f0a" },
+  need_input = { text = "Need input", color = "#ff453a" },
+  error = { text = "Error", color = "#ff3b30" },
+}
 local CELL_ASPECT_RATIO = 2.2
 local HAS_WINBLEN = pcall(function()
   vim.api.nvim_get_option_value("winblend", {})
@@ -418,8 +429,9 @@ local function clear_lifecycle()
   state.visible = false
 end
 
-local function terminal_env()
+local function terminal_env(status_path)
   return {
+    PI_AGENT_STATUS_FILE = status_path,
     -- Never let a pane inherit the managed Pi session that launched Neovim.
     PI_WORKTREE_SESSION_MANIFEST = "",
     PI_SESSION_FILE = "",
@@ -1589,6 +1601,72 @@ end
 -- `/resume` swaps the underlying session file — none of which raise a Neovim
 -- layout event. Keep polling until the pane is closed.
 -- @param session The session object
+local function aggregate_status()
+  local statuses = {}
+  for _, session in pairs(state.sessions) do
+    statuses[session.status] = true
+  end
+  for _, status in ipairs({ "need_input", "working", "error", "starting", "idle" }) do
+    if statuses[status] then
+      return status
+    end
+  end
+  return nil
+end
+
+local function publish_iterm_status()
+  if vim.env.TERM_PROGRAM ~= "iTerm.app" or not vim.env.ITERM_SESSION_ID
+    or vim.env.ITERM_SESSION_ID == "" or (vim.env.TMUX and vim.env.TMUX ~= "") then
+    return
+  end
+  local status = aggregate_status()
+  if status == state.iterm_status then
+    return
+  end
+  local tty = io.open("/dev/tty", "w")
+  if not tty then
+    return
+  end
+  local value = ITERM_STATUSES[status]
+  local payload = value and string.format(
+    "status=%s;indicator=%s;status-color=%s", value.text, value.color, value.color
+  ) or "status=;indicator=;status-color="
+  local icon = ""
+  if status and not state.iterm_status then
+    local encoded = vim.fn.system({ "base64" }, vim.json.encode(ICON_PATH)):gsub("%s+", "")
+    if vim.v.shell_error == 0 then
+      icon = "\27]1337;SetProfileProperty=Icon=Mg==;Custom Icon Path=" .. encoded .. "\7"
+    end
+  elseif not status then
+    icon = "\27]1337;SetProfileProperty=Icon=MQ==\7"
+  end
+  local ok = tty:write(icon .. "\27]21337;" .. payload .. "\7")
+  if ok then
+    ok = tty:flush()
+  end
+  tty:close()
+  if ok then
+    state.iterm_status = status
+  end
+end
+
+local function refresh_session_status(session)
+  if not session.job then
+    return
+  end
+  local file = io.open(session.status_path, "r")
+  if not file then
+    return
+  end
+  local status = file:read("*a")
+  file:close()
+  status = status and status:match("^([a-z_]+)%s*$")
+  if ITERM_STATUSES[status] and session.status ~= status then
+    session.status = status
+    publish_iterm_status()
+  end
+end
+
 local function start_name_poll(session)
   if session.name_timer then
     pcall(vim.fn.timer_stop, session.name_timer)
@@ -1606,6 +1684,7 @@ local function start_name_poll(session)
     if refresh_conversation_title(session) and state.visible then
       update_active_marker()
     end
+    refresh_session_status(session)
   end
 
   -- 500ms keeps the border title in step with `/name` and `/resume` without
@@ -1617,6 +1696,7 @@ local function create_session()
   local id = state.next_id
   state.next_id = state.next_id + 1
   local session_id = new_session_id(id)
+  local status_path = vim.fn.tempname()
   local cwd = state.base_cwd or resolve_cwd()
 
   -- Create marker before launching pi for session claiming
@@ -1633,6 +1713,8 @@ local function create_session()
     cwd = cwd,
     launch_cwd = cwd,
     session_id = session_id,
+    status_path = status_path,
+    status = "starting",
     session_file = nil,
     session_mtime = nil,
     session_size = nil,
@@ -1657,10 +1739,11 @@ local function create_session()
   -- Pi's fullscreen viewport redraws in place, leaving Neovim no terminal
   -- scrollback for normal-mode browsing inside the pane.
   local cmd = M.config.command .. " --tui-mode regular --session-id " .. session_id
+    .. " --extension " .. vim.fn.shellescape(STATUS_EXTENSION)
   vim.api.nvim_buf_call(session.buf, function()
     session.job = vim.fn.termopen(cmd, {
       cwd = cwd,
-      env = terminal_env(),
+      env = terminal_env(status_path),
       on_exit = function(_, exit_code)
         vim.schedule(function()
           if session.closing or state.sessions[id] ~= session then
@@ -1672,6 +1755,9 @@ local function create_session()
             return
           end
 
+          session.status = "error"
+          pcall(vim.fn.delete, session.status_path)
+          publish_iterm_status()
           if session.name_timer then
             pcall(vim.fn.timer_stop, session.name_timer)
             session.name_timer = nil
@@ -1694,6 +1780,7 @@ local function create_session()
 
   -- The name lands asynchronously and can later change via `/name`.
   start_name_poll(session)
+  publish_iterm_status()
 
   return session
 end
@@ -1792,8 +1879,10 @@ remove_session = function(id, stop_job)
 
   -- Delete marker for this session
   delete_marker(session.marker_path)
+  pcall(vim.fn.delete, session.status_path)
 
   state.sessions[id] = nil
+  publish_iterm_status()
   state.layout = collapse_leaf(state.layout, id)
   if was_focused or not valid_layout_session(state.current_id) then
     state.current_id = first_leaf(state.layout)
@@ -2013,8 +2102,10 @@ function M.setup(opts)
         end
         -- Delete marker for this session
         delete_marker(session.marker_path)
+        pcall(vim.fn.delete, session.status_path)
       end)
       state.sessions = {}
+      publish_iterm_status()
       clear_lifecycle()
       state.suppress_focus_events = false
     end,
