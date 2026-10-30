@@ -33,14 +33,6 @@ M.config = vim.deepcopy(defaults)
 
 local ACTIVE_BORDER = "PiAgentActiveBorder"
 local ACTIVE_TITLE = "PiAgentActiveTitle"
-local STATUS_HIGHLIGHTS = {
-  starting = "PiAgentStatusStarting",
-  idle = "PiAgentStatusIdle",
-  working = "PiAgentStatusWorking",
-  error = "PiAgentStatusError",
-}
-local STATUS_LABELS = { starting = "Starting", idle = "Idle", working = "Working", error = "Error" }
-local STATUS_EXTENSION = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h") .. "/status.ts"
 local CELL_ASPECT_RATIO = 2.2
 local HAS_WINBLEN = pcall(function()
   vim.api.nvim_get_option_value("winblend", {})
@@ -426,9 +418,8 @@ local function clear_lifecycle()
   state.visible = false
 end
 
-local function terminal_env(status_path)
+local function terminal_env()
   return {
-    PI_AGENT_STATUS_FILE = status_path,
     -- Never let a pane inherit the managed Pi session that launched Neovim.
     PI_WORKTREE_SESSION_MANIFEST = "",
     PI_SESSION_FILE = "",
@@ -1084,12 +1075,8 @@ local function window_config(rect, id, active)
   }
 
   -- Set title for all panes, not just the active one
-  local status = session and session.status or "starting"
-  config.title = {
-    { "● ", STATUS_HIGHLIGHTS[status] },
-    { STATUS_LABELS[status] .. " · " },
-    { session and session_title(session) or string.format("pi-agent %d", id) },
-  }
+  config.title = session and session_title(session)
+    or string.format("pi-agent %d", id)
 
   return config
 end
@@ -1601,24 +1588,6 @@ end
 -- Pi generates the initial name asynchronously, `/name` can change it later, and
 -- `/resume` swaps the underlying session file — none of which raise a Neovim
 -- layout event. Keep polling until the pane is closed.
-local function refresh_session_status(session)
-  if not session.job then
-    return false
-  end
-  local file = io.open(session.status_path, "r")
-  if not file then
-    return false
-  end
-  local status = file:read("*a")
-  file:close()
-  status = status and status:match("^(%a+)%s*$")
-  if not STATUS_LABELS[status] or session.status == status then
-    return false
-  end
-  session.status = status
-  return true
-end
-
 -- @param session The session object
 local function start_name_poll(session)
   if session.name_timer then
@@ -1634,14 +1603,13 @@ local function start_name_poll(session)
       return
     end
 
-    local title_changed = refresh_conversation_title(session)
-    local status_changed = refresh_session_status(session)
-    if (title_changed or status_changed) and state.visible then
+    if refresh_conversation_title(session) and state.visible then
       update_active_marker()
     end
   end
 
-  -- 500ms keeps the border title in step with `/name`, `/resume`, and Pi status.
+  -- 500ms keeps the border title in step with `/name` and `/resume` without
+  -- being noticeable; the OSC check is a buffer lookup, no file I/O.
   session.name_timer = vim.fn.timer_start(500, poll, { ["repeat"] = -1 })
 end
 
@@ -1649,7 +1617,6 @@ local function create_session()
   local id = state.next_id
   state.next_id = state.next_id + 1
   local session_id = new_session_id(id)
-  local status_path = vim.fn.tempname()
   local cwd = state.base_cwd or resolve_cwd()
 
   -- Create marker before launching pi for session claiming
@@ -1666,8 +1633,6 @@ local function create_session()
     cwd = cwd,
     launch_cwd = cwd,
     session_id = session_id,
-    status_path = status_path,
-    status = "starting",
     session_file = nil,
     session_mtime = nil,
     session_size = nil,
@@ -1692,11 +1657,10 @@ local function create_session()
   -- Pi's fullscreen viewport redraws in place, leaving Neovim no terminal
   -- scrollback for normal-mode browsing inside the pane.
   local cmd = M.config.command .. " --tui-mode regular --session-id " .. session_id
-    .. " --extension " .. vim.fn.shellescape(STATUS_EXTENSION)
   vim.api.nvim_buf_call(session.buf, function()
     session.job = vim.fn.termopen(cmd, {
       cwd = cwd,
-      env = terminal_env(status_path),
+      env = terminal_env(),
       on_exit = function(_, exit_code)
         vim.schedule(function()
           if session.closing or state.sessions[id] ~= session then
@@ -1708,10 +1672,6 @@ local function create_session()
             return
           end
 
-          session.status = "error"
-          if state.visible then
-            update_active_marker()
-          end
           if session.name_timer then
             pcall(vim.fn.timer_stop, session.name_timer)
             session.name_timer = nil
@@ -1832,7 +1792,6 @@ remove_session = function(id, stop_job)
 
   -- Delete marker for this session
   delete_marker(session.marker_path)
-  pcall(vim.fn.delete, session.status_path)
 
   state.sessions[id] = nil
   state.layout = collapse_leaf(state.layout, id)
@@ -1985,10 +1944,6 @@ function M.setup(opts)
 
   vim.api.nvim_set_hl(0, ACTIVE_BORDER, { default = true, link = "DiagnosticInfo" })
   vim.api.nvim_set_hl(0, ACTIVE_TITLE, { default = true, link = "DiagnosticInfo" })
-  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.starting, { default = true, link = "Comment" })
-  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.idle, { default = true, link = "DiagnosticOk" })
-  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.working, { default = true, link = "DiagnosticWarn" })
-  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.error, { default = true, link = "DiagnosticError" })
 
   vim.api.nvim_create_user_command("PiAgent", M.toggle, {})
   vim.api.nvim_create_user_command("PiAgentOpen", M.open, {})
@@ -2058,7 +2013,6 @@ function M.setup(opts)
         end
         -- Delete marker for this session
         delete_marker(session.marker_path)
-        pcall(vim.fn.delete, session.status_path)
       end)
       state.sessions = {}
       clear_lifecycle()

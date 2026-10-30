@@ -9,8 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Each Pi pane now shows its own colored Starting, Idle, Working, or Error
-  indicator in its border title, including after hiding and reopening panes.
 - Ordinary buffers from the original checkout now follow the focused validated
   Pi worktree when a matching file exists, and return to the base checkout when
   the final pane exits. Modified, special, unrelated, and missing-counterpart
