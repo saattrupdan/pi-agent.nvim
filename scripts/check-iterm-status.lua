@@ -59,6 +59,7 @@ local ok, err = xpcall(function()
   pi.open()
   local first = vim.api.nvim_get_current_buf()
   assert_true(status() == "Starting", "first Pi pane starts iTerm status")
+  assert_true(output[1]:sub(1, 8) == "\27]21337;", "status precedes permission-gated icon update")
   assert_true(output[1]:find("SetProfileProperty=Icon=Mg==;Custom Icon Path=", 1, true), "Pi icon installed")
   local encoded_icon = output[1]:match("Custom Icon Path=([^\7]+)")
   local icon_path = vim.json.decode(vim.fn.system({ "base64", "-D" }, encoded_icon))
@@ -96,6 +97,7 @@ local ok, err = xpcall(function()
   pi.close_pane()
   vim.fn.confirm = confirm
   assert_true(status() == "", "status cleared after final pane")
+  assert_true(output[#output]:sub(1, 8) == "\27]21337;", "clear precedes permission-gated icon reset")
   assert_true(output[#output]:find("SetProfileProperty=Icon=MQ==", 1, true), "automatic icon restored")
 
   vim.env.TERM_PROGRAM = "other-terminal"

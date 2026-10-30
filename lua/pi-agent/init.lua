@@ -1640,7 +1640,8 @@ local function publish_iterm_status()
   elseif not status then
     icon = "\27]1337;SetProfileProperty=Icon=MQ==\7"
   end
-  local ok = tty:write(icon .. "\27]21337;" .. payload .. "\7")
+  -- iTerm2 may pause profile changes for approval; publish status first.
+  local ok = tty:write("\27]21337;" .. payload .. "\7" .. icon)
   if ok then
     ok = tty:flush()
   end
