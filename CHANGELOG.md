@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Publish a Pi-only, expiring iTerm2 session variable for optional automatic
+  tab ordering, cleared when the last pane closes. Plain Neovim is unaffected.
 - Direct iTerm2 vertical tabs now show one colored aggregate Pi status across all
   panes (Need input, Working, Error, Finished, or Idle), and show the Pi splash
   logo instead of Neovim's app icon while Pi panes run. Both reset on exit.

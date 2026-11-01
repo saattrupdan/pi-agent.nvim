@@ -45,8 +45,23 @@ local function wait_for(predicate, label)
   assert_true(vim.wait(3500, predicate, 20), "timed out waiting for " .. label)
 end
 
+local function last_status_output()
+  for i = #output, 1, -1 do
+    if output[i]:find("\27]21337;status=", 1, true) then
+      return output[i]
+    end
+  end
+  return ""
+end
+
 local function status()
-  return (output[#output] or ""):match("\27%]21337;status=([^;]*);")
+  return last_status_output():match("\27%]21337;status=([^;]*);")
+end
+
+local function marker()
+  local encoded = (output[#output] or ""):match("SetUserVar=pi_agent_sort_status=([^\7]*)")
+  assert_true(encoded ~= nil, "Pi marker accompanies status")
+  return vim.fn.system({ "base64", "-D" }, encoded)
 end
 
 local function send(buf, command)
@@ -55,6 +70,7 @@ end
 
 local ok, err = xpcall(function()
   pi.setup({ command = fake_pi, keymap = false })
+  assert_true(#output == 0, "ordinary Neovim does not publish a Pi marker")
   pi.open()
   local first = vim.api.nvim_get_current_buf()
   assert_true(status() == "Idle", "new Pi pane is idle before its first response")
@@ -64,6 +80,12 @@ local ok, err = xpcall(function()
   local icon_path = vim.json.decode(vim.fn.system({ "base64", "-D" }, encoded_icon))
   assert_true(icon_path == root .. "/media/pi-tab-icon.png", "icon uses bundled Pi logo")
   assert_true(output[1]:find("indicator=;status-color=", 1, true), "initial idle has no colored dot")
+  local initial_expiry = tonumber(marker():match("^idle:(%d+)$"))
+  assert_true(initial_expiry ~= nil, "Pi marker starts idle")
+  assert_true(vim.wait(6500, function()
+    return tonumber(marker():match("^idle:(%d+)$")) > initial_expiry
+  end, 100), "Pi marker renews while idle")
+  assert_true(status() == "Idle", "marker renewal leaves the visible status alone")
 
   pi.split()
   local second = vim.api.nvim_get_current_buf()
@@ -89,10 +111,11 @@ local ok, err = xpcall(function()
   vim.api.nvim_exec_autocmds("FocusLost", {})
   send(first, "finish")
   wait_for(function() return status() == "Finished" end, "background completion is finished")
-  assert_true(output[#output]:find("indicator=#30d158", 1, true), "only finished has green dot")
+  assert_true(last_status_output():find("indicator=#30d158", 1, true), "only finished has green dot")
+  assert_true(marker():match("^finished:%d+$") ~= nil, "Pi marker tracks finished")
   vim.api.nvim_exec_autocmds("FocusGained", {})
   assert_true(status() == "Idle", "selecting finished tab acknowledges completion")
-  assert_true(output[#output]:find("indicator=;status-color=", 1, true), "acknowledged idle has no dot")
+  assert_true(last_status_output():find("indicator=;status-color=", 1, true), "acknowledged idle has no dot")
   vim.wait(700)
   assert_true(status() == "Idle", "acknowledged completion does not reappear on poll")
 
@@ -121,6 +144,7 @@ local ok, err = xpcall(function()
   assert_true(status() == "", "status cleared after final pane")
   assert_true(output[#output]:sub(1, 8) == "\27]21337;", "clear precedes permission-gated icon reset")
   assert_true(output[#output]:find("SetProfileProperty=Icon=MQ==", 1, true), "automatic icon restored")
+  assert_true(marker() == "", "Pi marker cleared with final pane")
 
   vim.env.TERM_PROGRAM = "other-terminal"
   local count = #output

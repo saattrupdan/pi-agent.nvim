@@ -141,8 +141,12 @@ When the first Pi pane is created, the plugin captures the original Git checkout
 
 A bundled Pi extension publishes each pane's lifecycle state to its own temporary
 file. Neovim aggregates those states and sends iTerm2's session-status control
-sequence directly to its enclosing terminal, not to a Pi pane. Status files are
-removed when panes close.
+sequence directly to its enclosing terminal, not to a Pi pane. It also sets
+`user.pi_agent_sort_status` to the aggregate status and an expiry time while Pi
+panes exist; the variable is renewed every five seconds and cleared on normal
+exit. The optional sorter in `saattrupdan/dotfiles/iterm2` uses it to order Pi
+tabs without mistaking ordinary Neovim for Pi. Status files are removed when
+panes close.
 
 Scrollback browsing preserves the window view while output arrives, without editing Pi's live terminal buffer. A Pi renderer full redraw (for example, one that clears scrollback with CSI 3J) can erase history independently; the plugin cannot restore lines removed by Pi.
 

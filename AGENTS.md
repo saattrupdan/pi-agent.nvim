@@ -33,7 +33,15 @@ There is no dev server. Run `for script in scripts/check-*.sh; do sh "$script"; 
   reads. The `*_nvim-<id>.jsonl` file created by our `--session-id` goes quiet as
   soon as Pi switches sessions, so file polling is only a fallback for when Pi
   never claims the title — never make it the primary source again.
-- **Single shared state.** `state` (buf/win/job) at the top of `init.lua` is module-level — the plugin assumes one Pi session at a time. Don't introduce a second concurrent session without rethinking it.
+- **One Neovim, multiple Pi panes.** `state.sessions` tracks each Pi job, and
+  `aggregate_status()` publishes one status for the enclosing iTerm2 tab. Do not
+  use Neovim pane focus as iTerm2 tab focus; `FocusGained`/`FocusLost` acknowledge
+  completed responses when the terminal tab changes focus.
+- **Pi tab-sort marker.** `publish_iterm_status()` sets the session variable
+  `user.pi_agent_sort_status` to `<status>:<expiry epoch>` and renews it while
+  panes exist. The optional sorter is in `~/gitsky/dotfiles/iterm2/`; it treats
+  expired or absent markers as non-Pi. Clear the variable with the final pane;
+  never emit it for ordinary Neovim.
 - **Buffer survives toggles.** `M.close` only closes the window; the terminal buffer and `pi` job stay alive so toggling preserves the session. The buffer is deleted only on `on_exit` or `ExitPre`.
 - **`<C-,>` is terminal-dependent.** Many terminals don't transmit it as a distinct key. If a test of the default keymap "does nothing", it's the terminal, not the plugin.
 - **Terminal-mode keymaps are buffer-local.** `<C-o>` forwarding and `abort_keymap` are set on `state.buf` only, so global tmaps don't get clobbered. Add new control-key forwards inside the same `if not buf_existed` block.

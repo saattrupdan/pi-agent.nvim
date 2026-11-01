@@ -17,6 +17,7 @@ local state = {
   buffer_origins = {},
   buffer_focus_sync = false,
   iterm_status = nil,
+  iterm_marker_at = nil,
   tab_active = true,
 }
 
@@ -38,6 +39,9 @@ local ACTIVE_TITLE = "PiAgentActiveTitle"
 local PLUGIN_ROOT = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h")
 local STATUS_EXTENSION = PLUGIN_ROOT .. "/lua/pi-agent/status.ts"
 local ICON_PATH = PLUGIN_ROOT .. "/media/pi-tab-icon.png"
+local ITERM_MARKER = "pi_agent_sort_status"
+local ITERM_MARKER_INTERVAL = 5
+local ITERM_MARKER_LIFETIME = 20
 local ITERM_STATUSES = {
   starting = { text = "Starting", color = "#8e8e93" },
   idle = { text = "Idle", color = "" },
@@ -1623,13 +1627,21 @@ local function publish_iterm_status()
     return
   end
   local status = aggregate_status()
-  if status == state.iterm_status then
+  local now = os.time()
+  local changed = status ~= state.iterm_status
+  local refresh_marker = status and (
+    not state.iterm_marker_at or now - state.iterm_marker_at >= ITERM_MARKER_INTERVAL
+  )
+  if not changed and not refresh_marker then
     return
   end
   local value = ITERM_STATUSES[status]
-  local payload = value and string.format(
+  local payload = changed and (value and string.format(
     "status=%s;indicator=%s;status-color=%s", value.text, value.color, value.color
-  ) or "status=;indicator=;status-color="
+  ) or "status=;indicator=;status-color=") or nil
+  local marker_value = status and string.format("%s:%d", status, now + ITERM_MARKER_LIFETIME) or ""
+  local encoded_marker = status and vim.fn.system({ "base64" }, marker_value):gsub("%s+", "") or ""
+  local marker = "\27]1337;SetUserVar=" .. ITERM_MARKER .. "=" .. encoded_marker .. "\7"
   local icon = ""
   if status and not state.iterm_status then
     local encoded = vim.fn.system({ "base64" }, vim.json.encode(ICON_PATH)):gsub("%s+", "")
@@ -1640,12 +1652,14 @@ local function publish_iterm_status()
     icon = "\27]1337;SetProfileProperty=Icon=MQ==\7"
   end
   -- iTerm2 may pause profile changes for approval; publish status first.
-  local ok = io.stdout:write("\27]21337;" .. payload .. "\7" .. icon)
+  local sequence = (payload and "\27]21337;" .. payload .. "\7" or "") .. marker .. icon
+  local ok = io.stdout:write(sequence)
   if ok then
     ok = io.stdout:flush()
   end
   if ok then
     state.iterm_status = status
+    state.iterm_marker_at = status and now or nil
   end
 end
 
@@ -1694,6 +1708,7 @@ local function start_name_poll(session)
       update_active_marker()
     end
     refresh_session_status(session)
+    publish_iterm_status()
   end
 
   -- 500ms keeps the border title in step with `/name` and `/resume` without
