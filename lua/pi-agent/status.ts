@@ -32,12 +32,17 @@ export default function (pi: ExtensionAPI) {
     finished = false;
     publish();
   });
+  pi.on("before_agent_start", () => {
+    working = true;
+    finished = false;
+    publish();
+  });
   pi.on("agent_start", () => {
     working = true;
     finished = false;
     publish();
   });
-  pi.on("agent_end", () => {
+  pi.on("agent_settled", () => {
     working = false;
     finished = true;
     completedRuns += 1;
