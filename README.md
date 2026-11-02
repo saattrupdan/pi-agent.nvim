@@ -148,7 +148,14 @@ exit. The optional sorter in `saattrupdan/dotfiles/iterm2` uses it to order Pi
 tabs without mistaking ordinary Neovim for Pi. Status files are removed when
 panes close.
 
-With Neovim mouse support enabled (`:set mouse=a`), scrolling the wheel inside a Pi pane switches from terminal-input mode to normal mode and browses its scrollback. Use `i` to return to Pi's prompt. Scrollback browsing preserves the window view while output arrives, without editing Pi's live terminal buffer. A Pi renderer full redraw (for example, one that clears scrollback with CSI 3J) can erase history independently; the plugin cannot restore lines removed by Pi.
+With Neovim mouse support enabled (`:set mouse=a`) and mouse reporting enabled in
+the terminal emulator, scrolling the wheel inside a Pi pane switches from
+terminal-input mode to normal mode and browses its scrollback. Wheel-down stops
+at the latest output, even if Neovim's global `scrolloff` is large. Use `i` to
+return to Pi's prompt. Scrollback browsing preserves the window view while
+output arrives, without editing Pi's live terminal buffer. A Pi renderer full
+redraw (for example, one that clears scrollback with CSI 3J) can erase history
+independently; the plugin cannot restore lines removed by Pi.
 
 ## License
 

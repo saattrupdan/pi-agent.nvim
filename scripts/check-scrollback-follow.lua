@@ -1,5 +1,6 @@
 vim.o.columns = 100
 vim.o.lines = 40
+vim.o.scrolloff = 30
 
 local root = vim.fn.getcwd()
 package.path = root .. "/lua/?.lua;" .. root .. "/lua/?/init.lua;" .. package.path
@@ -35,6 +36,7 @@ end
 
 local ok, err = xpcall(function()
   pi.setup({ command = fake_pi, width = 0.8, height = 0.6, keymap = false, abort_keymap = false })
+  local base_win = vim.api.nvim_get_current_win()
   pi.open()
   wait_for(function()
     return session_buffer() ~= nil
@@ -54,8 +56,23 @@ local ok, err = xpcall(function()
     return vim.api.nvim_buf_line_count(buf) >= 80
   end, "initial terminal output")
 
+  local wheel_down = vim.api.nvim_buf_call(buf, function()
+    return vim.fn.maparg("<ScrollWheelDown>", "n", false, true)
+  end)
+  assert_true(type(wheel_down.callback) == "function", "normal-mode wheel is mapped in the Pi pane")
+  assert_true(vim.wo[win].scrolloff == 0, "Pi pane ignores global scrolloff")
+  assert_true(vim.wo[base_win].scrolloff == 30, "ordinary window keeps global scrolloff")
+  for _ = 1, 40 do
+    wheel_down.callback()
+  end
+  local bottom_top = vim.api.nvim_win_call(win, function()
+    return vim.fn.winsaveview().topline
+  end)
+  local last_top = vim.api.nvim_buf_line_count(buf) - vim.api.nvim_win_get_height(win) + 1
+  assert_true(bottom_top == last_top, "wheel-down stops at the last full screen")
+
   -- The first wheel tick leaves terminal-input mode and scrolls the pane;
-  -- later ticks use Neovim's normal-mode wheel handling.
+  -- later ticks use the normal-mode wheel mappings.
   for _, key in ipairs({ "<ScrollWheelUp>", "<ScrollWheelDown>" }) do
     local mapping = vim.api.nvim_buf_call(buf, function()
       return vim.fn.maparg(key, "t", false, true)

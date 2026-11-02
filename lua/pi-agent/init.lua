@@ -1366,6 +1366,24 @@ end
 local function setup_session_keymaps(session)
   local opts = { buffer = session.buf, nowait = true }
 
+  vim.keymap.set("n", "<ScrollWheelDown>", function()
+    if not is_valid_win(session.win) or vim.api.nvim_get_current_win() ~= session.win then
+      return
+    end
+    local count = tonumber(vim.o.mousescroll:match("ver:(%d+)")) or 3
+    vim.cmd("normal! " .. count .. "\005")
+    local view = vim.fn.winsaveview()
+    local line_count = vim.api.nvim_buf_line_count(session.buf)
+    local height = vim.api.nvim_win_get_height(session.win)
+    local last_top = math.max(1, line_count - height + 1)
+    if view.topline > last_top then
+      view.topline = last_top
+      view.lnum = math.min(line_count, last_top + height - 1)
+      vim.fn.winrestview(view)
+    end
+    remember_view_if_browsing(session)
+  end, vim.tbl_extend("force", opts, { desc = "Pi: scroll to latest output" }))
+
   -- Forward control keys Pi relies on (e.g. <C-o> toggles detailed tool
   -- output) so a global tmap can't swallow them in the agent buffer.
   for _, key in ipairs({ "<C-o>" }) do
@@ -1373,7 +1391,7 @@ local function setup_session_keymaps(session)
   end
 
   -- Switch to Neovim scrollback on the first wheel event; subsequent events
-  -- use normal-mode scrolling without sending wheel input to Pi.
+  -- scroll the pane without sending wheel input to Pi.
   for _, key in ipairs({ "<ScrollWheelUp>", "<ScrollWheelDown>" }) do
     vim.keymap.set("t", key, "<C-\\><C-n>" .. key, vim.tbl_extend("force", opts, {
       desc = "Pi: browse scrollback",
@@ -1848,6 +1866,9 @@ render_layout = function(focus_id)
     else
       session.win = vim.api.nvim_open_win(session.buf, false, config)
     end
+    -- A large global scrolloff lets normal-mode wheel scrolling show filler
+    -- rows past the terminal buffer's last line.
+    vim.wo[session.win].scrolloff = 0
   end)
 
   state.suppress_focus_events = previous_suppress
