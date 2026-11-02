@@ -14,6 +14,7 @@ vim.fn.writefile({
   '  case "$command" in',
   '    *need*) printf need_input > "$PI_AGENT_STATUS_FILE" ;;',
   '    *work*) printf working > "$PI_AGENT_STATUS_FILE" ;;',
+  '    *reset*) completed=0; printf working > "$PI_AGENT_STATUS_FILE" ;;',
   '    *finish*) completed=$((completed + 1)); printf "finished:%s" "$completed" > "$PI_AGENT_STATUS_FILE" ;;',
   '    *idle*) printf idle > "$PI_AGENT_STATUS_FILE" ;;',
   '    *fail*) exit 17 ;;',
@@ -103,6 +104,10 @@ local ok, err = xpcall(function()
   pi.close()
   send(first, "finish")
   wait_for(function() return status() == "Idle" end, "completion in active tab stays idle")
+  send(first, "reset")
+  wait_for(function() return status() == "Working" end, "handoff continues working")
+  send(first, "finish")
+  wait_for(function() return status() == "Idle" end, "completion after handoff reuses its counter")
   pi.open()
   assert_true(status() == "Idle", "reopening keeps aggregate state")
 

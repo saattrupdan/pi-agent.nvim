@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keep iTerm2 tabs Working while Pi resumes after isolated-branch creation or
+  cleanup, and recognise completion after the replacement process resets its counter.
 - Wheel-down in Pi scrollback stops at the latest output instead of showing
   blank space past the end when Neovim's global `scrolloff` is large.
 - Keep iTerm2 tabs Working through Pi retries, recovery, and queued

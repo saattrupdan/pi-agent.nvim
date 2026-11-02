@@ -13,8 +13,8 @@ process.env.PI_AGENT_STATUS_FILE = path;
 const handlers = new Map();
 statusExtension({ on: (name, handler) => handlers.set(name, handler) });
 
-function expectStatus(value) {
-  assert.equal(readFileSync(path, 'utf8'), value);
+function expectStatus(value, label) {
+  assert.equal(readFileSync(path, 'utf8'), value, label);
 }
 
 function emit(name) {
@@ -50,6 +50,22 @@ try {
   expectStatus('finished:2');
   emit('session_start');
   expectStatus('idle');
+
+  let activeHandlers = handlers;
+  for (const handoff of ['isolated_new_branch', 'clean-up-isolated-branch']) {
+    activeHandlers.get('agent_start')?.();
+    expectStatus('working', `${handoff} starts working`);
+    const resumedHandlers = new Map();
+    statusExtension({ on: (name, handler) => resumedHandlers.set(name, handler) });
+    expectStatus('working', `${handoff} keeps working on process startup`);
+    resumedHandlers.get('session_start')?.({ reason: 'startup' });
+    expectStatus('working', `${handoff} keeps working through session start`);
+    resumedHandlers.get('before_agent_start')?.();
+    expectStatus('working', `${handoff} stays working for the continuation`);
+    resumedHandlers.get('agent_settled')?.();
+    expectStatus('finished:1', `${handoff} completes after continuation`);
+    activeHandlers = resumedHandlers;
+  }
   console.log('Pi status lifecycle remains working until settlement.');
 } finally {
   rmSync(path, { force: true });

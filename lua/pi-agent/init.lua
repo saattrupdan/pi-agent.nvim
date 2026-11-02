@@ -1704,7 +1704,7 @@ local function refresh_session_status(session)
     status, completion = raw:match("^([a-z_]+):?(%d*)%s*$")
   end
   if status == "finished" then
-    if completion == "" or completion == session.last_completion then
+    if completion == "" or (completion == session.last_completion and session.status ~= "working") then
       return
     end
     session.last_completion = completion

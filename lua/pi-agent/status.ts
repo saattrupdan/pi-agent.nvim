@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
@@ -6,6 +6,12 @@ export default function (pi: ExtensionAPI) {
   if (!path) return;
 
   let working = false;
+  try {
+    working = readFileSync(path, "utf8").trim() === "working";
+  } catch {
+    // A new Pi pane has no status file to inherit.
+  }
+  let sessionStarted = false;
   let awaitingInput = false;
   let completedRuns = 0;
   let finished = false;
@@ -27,7 +33,8 @@ export default function (pi: ExtensionAPI) {
 
   publish();
   pi.on("session_start", () => {
-    working = false;
+    if (sessionStarted) working = false;
+    sessionStarted = true;
     awaitingInput = false;
     finished = false;
     publish();
