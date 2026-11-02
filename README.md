@@ -13,7 +13,7 @@ A tiny Neovim plugin that opens your [Pi](https://github.com/) agent in a center
 - Direct iTerm2 vertical tabs show one aggregate Pi status (Need input, Working,
   Error, Finished, or Idle) and the Pi logo while any pane is running
 - Toggle in and out — all `pi` sessions persist across toggles, restoring the exact focused pane and terminal buffer until you close their pane or exit Pi
-- Browse terminal scrollback while Pi streams output; new output preserves your browsed position and following resumes at the bottom or when returning to the prompt
+- Scroll through Pi history with the mouse wheel; new output preserves your browsed position and following resumes at the bottom or when returning to the prompt
 - Configurable size, border, and command
 
 ## Requirements
@@ -148,7 +148,7 @@ exit. The optional sorter in `saattrupdan/dotfiles/iterm2` uses it to order Pi
 tabs without mistaking ordinary Neovim for Pi. Status files are removed when
 panes close.
 
-Scrollback browsing preserves the window view while output arrives, without editing Pi's live terminal buffer. A Pi renderer full redraw (for example, one that clears scrollback with CSI 3J) can erase history independently; the plugin cannot restore lines removed by Pi.
+With Neovim mouse support enabled (`:set mouse=a`), scrolling the wheel inside a Pi pane switches from terminal-input mode to normal mode and browses its scrollback. Use `i` to return to Pi's prompt. Scrollback browsing preserves the window view while output arrives, without editing Pi's live terminal buffer. A Pi renderer full redraw (for example, one that clears scrollback with CSI 3J) can erase history independently; the plugin cannot restore lines removed by Pi.
 
 ## License
 

@@ -1372,6 +1372,14 @@ local function setup_session_keymaps(session)
     vim.keymap.set("t", key, key, opts)
   end
 
+  -- Switch to Neovim scrollback on the first wheel event; subsequent events
+  -- use normal-mode scrolling without sending wheel input to Pi.
+  for _, key in ipairs({ "<ScrollWheelUp>", "<ScrollWheelDown>" }) do
+    vim.keymap.set("t", key, "<C-\\><C-n>" .. key, vim.tbl_extend("force", opts, {
+      desc = "Pi: browse scrollback",
+    }))
+  end
+
   -- Terminal lines are padded with trailing spaces to the window width, so
   -- linewise visual would highlight all that padding. Remap V to select from
   -- column 0 to the last non-blank in line-wise mode (so extending with k/j

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Mouse-wheel scrolling in Pi panes enters normal-mode scrollback from terminal
+  mode, so wheel events browse history instead of reaching Pi.
 - Publish a Pi-only, expiring iTerm2 session variable for optional automatic
   tab ordering, cleared when the last pane closes. Plain Neovim is unaffected.
 - Direct iTerm2 vertical tabs now show one colored aggregate Pi status across all
