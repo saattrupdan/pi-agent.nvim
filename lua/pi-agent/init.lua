@@ -1382,6 +1382,15 @@ local function setup_session_keymaps(session)
       vim.fn.winrestview(view)
     end
     remember_view_if_browsing(session)
+    if vim.fn.line("w$") >= vim.fn.line("$") and session.job then
+      vim.schedule(function()
+        if is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win
+          and vim.api.nvim_get_mode().mode:match("^n")
+          and vim.fn.line("w$") >= vim.fn.line("$") then
+          vim.cmd("startinsert")
+        end
+      end)
+    end
   end, vim.tbl_extend("force", opts, { desc = "Pi: scroll to latest output" }))
 
   -- Forward control keys Pi relies on (e.g. <C-o> toggles detailed tool

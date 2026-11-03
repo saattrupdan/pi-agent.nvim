@@ -151,9 +151,9 @@ panes close.
 With Neovim mouse support enabled (`:set mouse=a`) and mouse reporting enabled in
 the terminal emulator, scrolling the wheel inside a Pi pane switches from
 terminal-input mode to normal mode and browses its scrollback. Wheel-down stops
-at the latest output, even if Neovim's global `scrolloff` is large. Use `i` to
-return to Pi's prompt. Scrollback browsing preserves the window view while
-output arrives, without editing Pi's live terminal buffer. A Pi renderer full
+at the latest output and returns to terminal-input mode, ready to type, even if
+Neovim's global `scrolloff` is large. Scrollback browsing preserves the window
+view while output arrives, without editing Pi's live terminal buffer. A Pi renderer full
 redraw (for example, one that clears scrollback with CSI 3J) can erase history
 independently; the plugin cannot restore lines removed by Pi.
 

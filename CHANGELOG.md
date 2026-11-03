@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Mouse-wheel scrolling back to the latest Pi output now returns to terminal
+  mode automatically, so the prompt is ready for input.
 - New Pi panes start Idle without a dot. Only a response completed while its
   iTerm2 tab is inactive shows Finished with a green dot; selecting the tab
   acknowledges Finished back to Idle. All Pi panes share this tab status.

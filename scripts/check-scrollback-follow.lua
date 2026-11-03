@@ -75,9 +75,30 @@ local ok, err = xpcall(function()
   assert_true(tops[2] < tops[1], "Pi scrolls as the cursor approaches the top half")
   assert_true(tops[3] > tops[1], "Pi scrolls as the cursor approaches the bottom half")
   assert_true(vim.wo[win].scrolloff == 30, "Pi pane inherits global scrolloff")
+  local original_cmd = vim.cmd
+  local terminal_returns = 0
+  vim.cmd = function(command)
+    if command == "startinsert" then
+      terminal_returns = terminal_returns + 1
+    else
+      original_cmd(command)
+    end
+  end
+  vim.api.nvim_win_call(win, function()
+    vim.fn.winrestview({ topline = 20, lnum = 25, col = 0 })
+  end)
+  wheel_down.callback()
+  vim.wait(30)
+  assert_true(terminal_returns == 0, "wheel-down stays in scrollback above the latest output")
   for _ = 1, 40 do
     wheel_down.callback()
+    vim.wait(5)
+    if terminal_returns > 0 then
+      break
+    end
   end
+  assert_true(terminal_returns == 1, "wheel-down returns to terminal mode at the latest output")
+  vim.cmd = original_cmd
   local bottom_top = vim.api.nvim_win_call(win, function()
     return vim.fn.winsaveview().topline
   end)
