@@ -1866,9 +1866,6 @@ render_layout = function(focus_id)
     else
       session.win = vim.api.nvim_open_win(session.buf, false, config)
     end
-    -- A large global scrolloff lets normal-mode wheel scrolling show filler
-    -- rows past the terminal buffer's last line.
-    vim.wo[session.win].scrolloff = 0
   end)
 
   state.suppress_focus_events = previous_suppress

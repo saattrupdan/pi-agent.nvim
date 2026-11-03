@@ -60,8 +60,21 @@ local ok, err = xpcall(function()
     return vim.fn.maparg("<ScrollWheelDown>", "n", false, true)
   end)
   assert_true(type(wheel_down.callback) == "function", "normal-mode wheel is mapped in the Pi pane")
-  assert_true(vim.wo[win].scrolloff == 0, "Pi pane ignores global scrolloff")
   assert_true(vim.wo[base_win].scrolloff == 30, "ordinary window keeps global scrolloff")
+  local tops = vim.api.nvim_win_call(win, function()
+    local height = vim.api.nvim_win_get_height(win)
+    local center = 20 + math.floor(height / 2)
+    vim.fn.winrestview({ topline = 20, lnum = center, col = 0 })
+    local before = vim.fn.winsaveview().topline
+    vim.cmd("normal! 8k")
+    local above = vim.fn.winsaveview().topline
+    vim.fn.winrestview({ topline = 20, lnum = center, col = 0 })
+    vim.cmd("normal! 8j")
+    return { before, above, vim.fn.winsaveview().topline }
+  end)
+  assert_true(tops[2] < tops[1], "Pi scrolls as the cursor approaches the top half")
+  assert_true(tops[3] > tops[1], "Pi scrolls as the cursor approaches the bottom half")
+  assert_true(vim.wo[win].scrolloff == 30, "Pi pane inherits global scrolloff")
   for _ = 1, 40 do
     wheel_down.callback()
   end
