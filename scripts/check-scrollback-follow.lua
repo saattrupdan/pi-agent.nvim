@@ -77,10 +77,14 @@ local ok, err = xpcall(function()
   assert_true(vim.wo[win].scrolloff == 30, "Pi pane inherits global scrolloff")
   local original_cmd = vim.cmd
   local terminal_returns = 0
+  local scroll_attempts = 0
   vim.cmd = function(command)
     if command == "startinsert" then
       terminal_returns = terminal_returns + 1
     else
+      if command:match("^normal!") then
+        scroll_attempts = scroll_attempts + 1
+      end
       original_cmd(command)
     end
   end
@@ -98,6 +102,10 @@ local ok, err = xpcall(function()
     end
   end
   assert_true(terminal_returns == 1, "wheel-down returns to terminal mode at the latest output")
+  local attempts_at_bottom = scroll_attempts
+  wheel_down.callback()
+  vim.wait(30)
+  assert_true(scroll_attempts == attempts_at_bottom, "normal-mode wheel does not scroll past the prompt")
   vim.cmd = original_cmd
   local bottom_top = vim.api.nvim_win_call(win, function()
     return vim.fn.winsaveview().topline
@@ -105,15 +113,25 @@ local ok, err = xpcall(function()
   local last_top = vim.api.nvim_buf_line_count(buf) - vim.api.nvim_win_get_height(win) + 1
   assert_true(bottom_top == last_top, "wheel-down stops at the last full screen")
 
-  -- The first wheel tick leaves terminal-input mode and scrolls the pane;
-  -- later ticks use the normal-mode wheel mappings.
-  for _, key in ipairs({ "<ScrollWheelUp>", "<ScrollWheelDown>" }) do
-    local mapping = vim.api.nvim_buf_call(buf, function()
-      return vim.fn.maparg(key, "t", false, true)
-    end)
-    assert_true(mapping.buffer == 1, key .. " is buffer-local")
-    assert_true(mapping.rhs == "<C-\\><C-n>" .. key, key .. " enters normal-mode scrollback")
+  -- Wheel-down at the prompt is discarded before it can leave terminal mode.
+  local wheel_down_terminal = vim.api.nvim_buf_call(buf, function()
+    return vim.fn.maparg("<ScrollWheelDown>", "t", false, true)
+  end)
+  assert_true(wheel_down_terminal.buffer == 1, "terminal-mode wheel-down is buffer-local")
+  assert_true(type(wheel_down_terminal.callback) == "function", "terminal-mode wheel-down checks the view")
+  for _ = 1, 3 do
+    assert_true(wheel_down_terminal.callback() == "", "wheel-down at the prompt is a no-op")
   end
+  local wheel_up_terminal = vim.api.nvim_buf_call(buf, function()
+    return vim.fn.maparg("<ScrollWheelUp>", "t", false, true)
+  end)
+  assert_true(wheel_up_terminal.buffer == 1, "terminal-mode wheel-up is buffer-local")
+  assert_true(wheel_up_terminal.rhs == "<C-\\><C-n><ScrollWheelUp>", "wheel-up enters scrollback")
+  vim.api.nvim_win_call(win, function()
+    vim.fn.winrestview({ topline = 20, lnum = 25, col = 0 })
+  end)
+  assert_true(wheel_down_terminal.callback() == "<C-\\><C-n><ScrollWheelDown>",
+    "wheel-down above the prompt enters scrollback")
 
   -- Headless Neovim cannot enter terminal-input mode; make the plugin observe
   -- terminal mode while testing wheel-scroll and streaming callbacks.

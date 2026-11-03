@@ -1370,18 +1370,20 @@ local function setup_session_keymaps(session)
     if not is_valid_win(session.win) or vim.api.nvim_get_current_win() ~= session.win then
       return
     end
-    local count = tonumber(vim.o.mousescroll:match("ver:(%d+)")) or 3
-    vim.cmd("normal! " .. count .. "\005")
-    local view = vim.fn.winsaveview()
-    local line_count = vim.api.nvim_buf_line_count(session.buf)
-    local height = vim.api.nvim_win_get_height(session.win)
-    local last_top = math.max(1, line_count - height + 1)
-    if view.topline > last_top then
-      view.topline = last_top
-      view.lnum = math.min(line_count, last_top + height - 1)
-      vim.fn.winrestview(view)
+    if vim.fn.line("w$") < vim.fn.line("$") then
+      local count = tonumber(vim.o.mousescroll:match("ver:(%d+)")) or 3
+      vim.cmd("normal! " .. count .. "\005")
+      local view = vim.fn.winsaveview()
+      local line_count = vim.api.nvim_buf_line_count(session.buf)
+      local height = vim.api.nvim_win_get_height(session.win)
+      local last_top = math.max(1, line_count - height + 1)
+      if view.topline > last_top then
+        view.topline = last_top
+        view.lnum = math.min(line_count, last_top + height - 1)
+        vim.fn.winrestview(view)
+      end
+      remember_view_if_browsing(session)
     end
-    remember_view_if_browsing(session)
     if vim.fn.line("w$") >= vim.fn.line("$") and session.job then
       vim.schedule(function()
         if is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win
@@ -1401,11 +1403,14 @@ local function setup_session_keymaps(session)
 
   -- Switch to Neovim scrollback on the first wheel event; subsequent events
   -- scroll the pane without sending wheel input to Pi.
-  for _, key in ipairs({ "<ScrollWheelUp>", "<ScrollWheelDown>" }) do
-    vim.keymap.set("t", key, "<C-\\><C-n>" .. key, vim.tbl_extend("force", opts, {
-      desc = "Pi: browse scrollback",
-    }))
-  end
+  vim.keymap.set("t", "<ScrollWheelUp>", "<C-\\><C-n><ScrollWheelUp>",
+    vim.tbl_extend("force", opts, { desc = "Pi: browse scrollback" }))
+  vim.keymap.set("t", "<ScrollWheelDown>", function()
+    if vim.fn.line("w$") >= vim.fn.line("$") then
+      return ""
+    end
+    return "<C-\\><C-n><ScrollWheelDown>"
+  end, vim.tbl_extend("force", opts, { expr = true, desc = "Pi: browse scrollback" }))
 
   -- Terminal lines are padded with trailing spaces to the window width, so
   -- linewise visual would highlight all that padding. Remap V to select from

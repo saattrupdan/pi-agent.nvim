@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Ignore wheel-down at the Pi prompt before leaving terminal mode or attempting
+  to scroll, preventing a visible mode-switch flicker.
 - Pi scrollback now honors Neovim's `scrolloff`, so cursor navigation starts
   scrolling at the configured distance from either edge of the pane.
 - Keep iTerm2 tabs Working while Pi resumes after isolated-branch creation or
