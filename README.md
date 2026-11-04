@@ -148,9 +148,15 @@ exit. The optional sorter in `saattrupdan/dotfiles/iterm2` uses it to order Pi
 tabs without mistaking ordinary Neovim for Pi. Status files are removed when
 panes close.
 
-With Neovim mouse support enabled (`:set mouse=a`) and mouse reporting enabled in
-the terminal emulator, scrolling the wheel inside a Pi pane switches from
-terminal-input mode to normal mode and browses its scrollback. Wheel-down stops
+With Neovim mouse support enabled (`:set mouse=a`) and click reporting enabled in
+the terminal emulator, clicking another Pi pane switches focus and activates its
+terminal input. Clicks within the current pane retain Neovim's cursor and selection
+behavior.
+In iTerm2, enable click reporting as well as wheel reporting; wheel-only reporting
+cannot switch panes. Hold Option to use iTerm2's native text selection.
+
+With mouse-wheel reporting enabled, scrolling the wheel inside a Pi pane switches
+from terminal-input mode to normal mode and browses its scrollback. Wheel-down stops
 at the latest output and returns to terminal-input mode, ready to type, even if
 Neovim's global `scrolloff` is large. Further wheel-down events at the prompt
 are ignored without leaving terminal mode. Scrollback browsing preserves the

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Click another Pi pane to switch sessions and activate terminal input;
+  clicks within the current pane retain native scrollback selection behavior.
 - Mouse-wheel scrolling in Pi panes enters normal-mode scrollback from terminal
   mode, so wheel events browse history instead of reaching Pi.
 - Publish a Pi-only, expiring iTerm2 session variable for optional automatic

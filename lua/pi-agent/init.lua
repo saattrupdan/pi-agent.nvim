@@ -1395,6 +1395,18 @@ local function setup_session_keymaps(session)
     end
   end, vim.tbl_extend("force", opts, { desc = "Pi: scroll to latest output" }))
 
+  -- Cross-window terminal clicks are processed through Normal-mode mappings.
+  vim.keymap.set({ "n", "t" }, "<LeftMouse>", function()
+    local mouse = vim.fn.getmousepos()
+    for _, target in pairs(state.sessions) do
+      if target.win == mouse.winid and target.win ~= session.win and is_valid_win(target.win) then
+        local leave_terminal = in_terminal_mode() and "<C-\\><C-n>" or ""
+        return leave_terminal .. "<LeftMouse><Cmd>startinsert<CR>"
+      end
+    end
+    return "<LeftMouse>"
+  end, vim.tbl_extend("force", opts, { expr = true, desc = "Pi: click to focus pane" }))
+
   -- Forward control keys Pi relies on (e.g. <C-o> toggles detailed tool
   -- output) so a global tmap can't swallow them in the agent buffer.
   for _, key in ipairs({ "<C-o>" }) do
