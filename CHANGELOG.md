@@ -38,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Prevent Neovim from crashing when Pi exits during the Ctrl+X close
+  confirmation by leaving terminal mode before opening the prompt.
 - Ignore wheel-down at the Pi prompt before leaving terminal mode or attempting
   to scroll, preventing a visible mode-switch flicker.
 - Pi scrollback now honors Neovim's `scrolloff`, so cursor navigation starts

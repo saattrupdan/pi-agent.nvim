@@ -2076,29 +2076,40 @@ end
 
 function M.close_pane()
   local was_terminal = in_terminal_mode()
-  if was_terminal then
-    vim.cmd("stopinsert")
-  end
-
   local id = current_session_id()
   if not id then
     return
   end
 
-  -- One-keystroke confirmation: <y> closes (default), anything else cancels.
-  if vim.fn.confirm("Close this Pi pane?", "&Yes\n&No", 1) ~= 1 then
-    if was_terminal then
-      vim.cmd("startinsert")
+  local function close()
+    if not state.sessions[id] then
+      return
     end
-    return
+
+    -- One-keystroke confirmation: <y> closes (default), anything else cancels.
+    if vim.fn.confirm("Close this Pi pane?", "&Yes\n&No", 1) ~= 1 then
+      if was_terminal and state.sessions[id] then
+        focus_session(id, true)
+      end
+      return
+    end
+
+    remove_session(id, true)
+
+    if state.layout then
+      focus_session(state.current_id or first_leaf(state.layout), was_terminal)
+    else
+      state.visible = false
+    end
   end
 
-  remove_session(id, true)
-
-  if state.layout then
-    focus_session(state.current_id or first_leaf(state.layout), was_terminal)
+  if was_terminal then
+    -- stopinsert takes effect after the mapping returns. A nested confirm loop
+    -- can otherwise free a terminal still referenced by Neovim's input loop.
+    vim.cmd("stopinsert")
+    vim.schedule(close)
   else
-    state.visible = false
+    close()
   end
 end
 
