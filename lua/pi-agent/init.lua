@@ -1491,9 +1491,9 @@ local function setup_session_keymaps(session)
       -- extra session_start races the splash's screen-clear + redraw, causing the
       -- flicker / black screen).
       --
-      -- The splash logo is the reliable "fresh" marker: every logo row renders ≥12
-      -- full-block glyphs (█), whereas the only other █ in the UI is the footer
-      -- context bar, which is at most 10 wide. Only inspect the live terminal screen:
+      -- Logo rows contain only whitespace and ≥12 full-block glyphs (█).
+      -- Footer context and quota bars can exceed that count together, but also
+      -- contain labels and brackets. Only inspect the live terminal screen:
       -- the initial splash remains in scrollback after a conversation starts and
       -- would otherwise make every later reset look like a fresh session.
       local is_splash = false
@@ -1503,7 +1503,8 @@ local function setup_session_keymaps(session)
       local first_screen_line = math.max(0, line_count - screen_height)
       local lines = vim.api.nvim_buf_get_lines(session.buf, first_screen_line, -1, false)
       for _, line in ipairs(lines) do
-        if select(2, line:gsub("█", "")) >= 12 then
+        local without_blocks, block_count = line:gsub("█", "")
+        if block_count >= 12 and without_blocks:match("^%s*$") then
           is_splash = true
           break
         end

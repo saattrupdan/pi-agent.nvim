@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Ctrl+L now starts a new conversation when footer usage bars contain twelve or
+  more filled blocks, instead of mistaking those bars for the fresh splash logo
+  and only reloading extensions.
 - Prevent Neovim from crashing when Pi exits during the Ctrl+X close
   confirmation by leaving terminal mode before opening the prompt.
 - Ignore wheel-down at the Pi prompt before leaving terminal mode or attempting
