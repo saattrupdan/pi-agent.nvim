@@ -1363,66 +1363,170 @@ local function navigate_pane(direction)
   end
 end
 
-local function setup_session_keymaps(session)
-  local opts = { buffer = session.buf, nowait = true }
+local function mouse_session(fallback)
+  local mouse = vim.fn.getmousepos()
+  for _, session in pairs(state.sessions) do
+    if session.win == mouse.winid and is_valid_win(session.win) then
+      return session
+    end
+  end
+  if mouse.winid == 0 then
+    return fallback
+  end
+end
 
-  vim.keymap.set("n", "<ScrollWheelDown>", function()
-    if not is_valid_win(session.win) or vim.api.nvim_get_current_win() ~= session.win then
-      return
+local function scroll_session(session, direction)
+  session = mouse_session(session)
+  if not session or not is_valid_win(session.win) then
+    return
+  end
+  if vim.api.nvim_get_current_win() ~= session.win then
+    focus_session(session.id, false)
+  end
+  if direction == "up" or vim.fn.line("w$") < vim.fn.line("$") then
+    local count = tonumber(vim.o.mousescroll:match("ver:(%d+)")) or 3
+    if count > 0 then
+      vim.cmd("normal! " .. count .. (direction == "up" and "\025" or "\005"))
     end
-    if vim.fn.line("w$") < vim.fn.line("$") then
-      local count = tonumber(vim.o.mousescroll:match("ver:(%d+)")) or 3
-      vim.cmd("normal! " .. count .. "\005")
-      local view = vim.fn.winsaveview()
-      local line_count = vim.api.nvim_buf_line_count(session.buf)
-      local height = vim.api.nvim_win_get_height(session.win)
-      local last_top = math.max(1, line_count - height + 1)
-      if view.topline > last_top then
-        view.topline = last_top
-        view.lnum = math.min(line_count, last_top + height - 1)
-        vim.fn.winrestview(view)
+    local view = vim.fn.winsaveview()
+    local line_count = vim.api.nvim_buf_line_count(session.buf)
+    local height = vim.api.nvim_win_get_height(session.win)
+    local last_top = math.max(1, line_count - height + 1)
+    if view.topline > last_top then
+      view.topline = last_top
+      view.lnum = math.min(line_count, last_top + height - 1)
+      vim.fn.winrestview(view)
+    end
+    remember_view_if_browsing(session)
+  end
+  if direction == "down" and vim.fn.line("w$") >= vim.fn.line("$") and session.job then
+    vim.schedule(function()
+      if is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win
+        and vim.api.nvim_get_mode().mode:match("^n")
+        and vim.fn.line("w$") >= vim.fn.line("$") then
+        vim.cmd("startinsert")
       end
-      remember_view_if_browsing(session)
+    end)
+  end
+end
+
+local function mouse_normal_prefix()
+  local mode = vim.api.nvim_get_mode().mode
+  if mode == "t" or mode:match("^i") then
+    return "<C-\\><C-n>"
+  end
+  if mode == "v" or mode == "V" or mode == "\022" then
+    return "<Esc>"
+  end
+  return ""
+end
+
+local function mouse_press()
+  local target = mouse_session()
+  if target then
+    target.mouse_view = vim.api.nvim_win_call(target.win, vim.fn.winsaveview)
+    return mouse_normal_prefix() .. "<Plug>(PiAgentMousePress)<LeftMouse>"
+  end
+end
+
+local function begin_mouse_selection()
+  local target = mouse_session()
+  if not target then return end
+  if target.mouse_scrolloff == nil then
+    target.mouse_scrolloff = vim.api.nvim_win_get_option(target.win, "scrolloff")
+  end
+  -- Terminal-mode exit restores scrolloff, so suspend it after leaving Terminal mode.
+  vim.api.nvim_win_set_option(target.win, "scrolloff", 0)
+  if target.mouse_view then
+    vim.api.nvim_win_call(target.win, function() vim.fn.winrestview(target.mouse_view) end)
+    target.mouse_view = nil
+  end
+end
+
+local function route_mouse_key(mode, key, name, route)
+  local previous = key
+  for _, mapping in ipairs(vim.api.nvim_get_keymap(mode)) do
+    if mapping.lhs == key then
+      previous = "<Plug>(PiAgentPrevious" .. mode .. name .. ")"
+      vim.api.nvim_set_keymap(mode, previous, mapping.rhs or "", {
+        callback = mapping.callback,
+        expr = mapping.expr == 1,
+        noremap = mapping.noremap == 1,
+        nowait = mapping.nowait == 1,
+        script = mapping.script == 1,
+        silent = mapping.silent == 1,
+      })
+      break
     end
-    if vim.fn.line("w$") >= vim.fn.line("$") and session.job then
-      vim.schedule(function()
-        if is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win
-          and vim.api.nvim_get_mode().mode:match("^n")
-          and vim.fn.line("w$") >= vim.fn.line("$") then
-          vim.cmd("startinsert")
-        end
+  end
+  vim.keymap.set(mode, key, function() return route() or previous end, { expr = true, silent = true })
+end
+
+local function setup_mouse_routes()
+  if state.mouse_routes_installed then return end
+  state.mouse_routes_installed = true
+  vim.keymap.set("n", "<Plug>(PiAgentMousePress)", begin_mouse_selection)
+  for _, mode in ipairs({ "n", "i", "x" }) do
+    route_mouse_key(mode, "<LeftMouse>", "Click", mouse_press)
+    for _, direction in ipairs({ "Up", "Down" }) do
+      local plug = "<Plug>(PiAgentScroll" .. direction .. ")"
+      vim.keymap.set("n", plug, function() scroll_session(nil, direction:lower()) end)
+      route_mouse_key(mode, "<ScrollWheel" .. direction .. ">", "Scroll" .. direction, function()
+        if mouse_session() then return mouse_normal_prefix() .. plug end
       end)
     end
-  end, vim.tbl_extend("force", opts, { desc = "Pi: scroll to latest output" }))
+  end
+end
 
-  -- Cross-window terminal clicks are processed through Normal-mode mappings.
-  vim.keymap.set({ "n", "t" }, "<LeftMouse>", function()
-    local mouse = vim.fn.getmousepos()
-    for _, target in pairs(state.sessions) do
-      if target.win == mouse.winid and target.win ~= session.win and is_valid_win(target.win) then
-        local leave_terminal = in_terminal_mode() and "<C-\\><C-n>" or ""
-        return leave_terminal .. "<LeftMouse><Cmd>startinsert<CR>"
+local function setup_session_mouse(session)
+  local opts = { buffer = session.buf, nowait = true }
+
+  for _, direction in ipairs({ "Up", "Down" }) do
+    local wheel = "<ScrollWheel" .. direction .. ">"
+    local plug = "<Plug>(PiAgentScroll" .. direction .. ")"
+    local scroll = function() scroll_session(session, direction:lower()) end
+    vim.keymap.set("n", wheel, function()
+      return mouse_session(session) and plug or wheel
+    end, vim.tbl_extend("force", opts, { expr = true }))
+    vim.keymap.set("n", plug, scroll, opts)
+    vim.keymap.set("t", wheel, function()
+      local target = mouse_session(session)
+      if not target then
+        return wheel
       end
+      if direction == "Down" and target == session and vim.fn.line("w$") >= vim.fn.line("$") then
+        return ""
+      end
+      return "<C-\\><C-n>" .. plug
+    end, vim.tbl_extend("force", opts, { expr = true, desc = "Pi: browse scrollback" }))
+  end
+
+  -- Stay in Normal mode until release so a press can become a native drag selection.
+  vim.keymap.set({ "n", "t", "x" }, "<LeftMouse>", function()
+    return mouse_press() or "<LeftMouse>"
+  end, vim.tbl_extend("force", opts, { expr = true, desc = "Pi: click or select text" }))
+  vim.keymap.set({ "n", "x" }, "<Plug>(PiAgentMousePress)", begin_mouse_selection, opts)
+  vim.keymap.set({ "n", "x" }, "<LeftRelease>", "<LeftRelease><Plug>(PiAgentMouseRelease)", opts)
+  vim.keymap.set({ "n", "x" }, "<Plug>(PiAgentMouseRelease)", function()
+    if session.mouse_scrolloff ~= nil and is_valid_win(session.win) then
+      vim.api.nvim_win_set_option(session.win, "scrolloff", session.mouse_scrolloff)
+      session.mouse_scrolloff = nil
     end
-    return "<LeftMouse>"
-  end, vim.tbl_extend("force", opts, { expr = true, desc = "Pi: click to focus pane" }))
+    if vim.api.nvim_get_mode().mode:match("^n") and vim.fn.getmousepos().winid == session.win and session.job then
+      vim.cmd("startinsert")
+    end
+  end, vim.tbl_extend("force", opts, { desc = "Pi: activate input after click" }))
+end
+
+local function setup_session_keymaps(session)
+  local opts = { buffer = session.buf, nowait = true }
+  setup_session_mouse(session)
 
   -- Forward control keys Pi relies on (e.g. <C-o> toggles detailed tool
   -- output) so a global tmap can't swallow them in the agent buffer.
   for _, key in ipairs({ "<C-o>" }) do
     vim.keymap.set("t", key, key, opts)
   end
-
-  -- Switch to Neovim scrollback on the first wheel event; subsequent events
-  -- scroll the pane without sending wheel input to Pi.
-  vim.keymap.set("t", "<ScrollWheelUp>", "<C-\\><C-n><ScrollWheelUp>",
-    vim.tbl_extend("force", opts, { desc = "Pi: browse scrollback" }))
-  vim.keymap.set("t", "<ScrollWheelDown>", function()
-    if vim.fn.line("w$") >= vim.fn.line("$") then
-      return ""
-    end
-    return "<C-\\><C-n><ScrollWheelDown>"
-  end, vim.tbl_extend("force", opts, { expr = true, desc = "Pi: browse scrollback" }))
 
   -- Terminal lines are padded with trailing spaces to the window width, so
   -- linewise visual would highlight all that padding. Remap V to select from
@@ -2116,6 +2220,7 @@ end
 
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", defaults, opts or {})
+  setup_mouse_routes()
 
   -- Clean up old markers at startup
   cleanup_old_markers(300)

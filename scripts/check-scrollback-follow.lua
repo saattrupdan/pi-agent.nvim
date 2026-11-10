@@ -57,7 +57,7 @@ local ok, err = xpcall(function()
   end, "initial terminal output")
 
   local wheel_down = vim.api.nvim_buf_call(buf, function()
-    return vim.fn.maparg("<ScrollWheelDown>", "n", false, true)
+    return vim.fn.maparg("<Plug>(PiAgentScrollDown)", "n", false, true)
   end)
   assert_true(type(wheel_down.callback) == "function", "normal-mode wheel is mapped in the Pi pane")
   assert_true(vim.wo[base_win].scrolloff == 30, "ordinary window keeps global scrolloff")
@@ -126,12 +126,13 @@ local ok, err = xpcall(function()
     return vim.fn.maparg("<ScrollWheelUp>", "t", false, true)
   end)
   assert_true(wheel_up_terminal.buffer == 1, "terminal-mode wheel-up is buffer-local")
-  assert_true(wheel_up_terminal.rhs == "<C-\\><C-n><ScrollWheelUp>", "wheel-up enters scrollback")
+  assert_true(wheel_up_terminal.callback() == "<C-\\><C-n><Plug>(PiAgentScrollUp)",
+    "wheel-up enters the shared scrollback handler")
   vim.api.nvim_win_call(win, function()
     vim.fn.winrestview({ topline = 20, lnum = 25, col = 0 })
   end)
-  assert_true(wheel_down_terminal.callback() == "<C-\\><C-n><ScrollWheelDown>",
-    "wheel-down above the prompt enters scrollback")
+  assert_true(wheel_down_terminal.callback() == "<C-\\><C-n><Plug>(PiAgentScrollDown)",
+    "wheel-down above the prompt enters the shared scrollback handler")
 
   -- Headless Neovim cannot enter terminal-input mode; make the plugin observe
   -- terminal mode while testing wheel-scroll and streaming callbacks.

@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Click another Pi pane to switch sessions and activate terminal input;
-  clicks within the current pane retain native scrollback selection behavior.
+- Click any Pi pane to activate terminal input; press-and-drag selects text
+  for copying with `y`, including directly from terminal mode.
 - Mouse-wheel scrolling in Pi panes enters normal-mode scrollback from terminal
   mode, so wheel events browse history instead of reaching Pi.
 - Publish a Pi-only, expiring iTerm2 session variable for optional automatic
@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mouse-wheel scrolling focuses the Pi pane under the pointer and uses the same
+  scrollback handler from terminal and normal mode, returning to input at the bottom.
+- Mouse selection keeps text under the pointer with large `scrolloff` settings;
+  releasing the mouse restores the pane's original scroll margin.
 - Ctrl+L now starts a new conversation when footer usage bars contain twelve or
   more filled blocks, instead of mistaking those bars for the fresh splash logo
   and only reloading extensions.

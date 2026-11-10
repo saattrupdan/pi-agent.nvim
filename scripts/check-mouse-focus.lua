@@ -4,6 +4,7 @@ vim.fn.mkdir(tmp, "p")
 local fake = tmp .. "/fake-pi"
 vim.fn.writefile({
   "#!/bin/sh",
+  "printf '\\033[?1000h\\033[?1002h\\033[?1006h'",
   "i=1; while [ $i -le 80 ]; do printf 'history-%s\\n' \"$i\"; i=$((i + 1)); done",
   "while IFS= read -r line; do printf 'received:%s\\n' \"$line\"; done",
 }, fake)
@@ -41,6 +42,39 @@ local function current_win()
   return vim.rpcrequest(child, "nvim_get_current_win")
 end
 
+local function wheel(win, direction)
+  local pos = vim.rpcrequest(child, "nvim_win_get_position", win)
+  vim.rpcrequest(child, "nvim_input_mouse", "wheel", direction, "", 0, pos[1] + 2, pos[2] + 2)
+  vim.wait(30)
+end
+
+local function topline(win)
+  return remote([[return vim.api.nvim_win_call(..., function() return vim.fn.line("w0") end)]], win)
+end
+
+local function drag_and_yank(win)
+  local expected = remote([[
+    return vim.api.nvim_win_call(..., function()
+      return vim.trim(vim.fn.getline(vim.fn.line("w0") + 1):sub(1, 10))
+    end)
+  ]], win)
+  assert_true(expected ~= "", "drag starts on output text")
+  local pos = vim.rpcrequest(child, "nvim_win_get_position", win)
+  vim.rpcrequest(child, "nvim_input_mouse", "left", "press", "", 0, pos[1] + 2, pos[2] + 1)
+  vim.wait(30)
+  vim.rpcrequest(child, "nvim_input_mouse", "left", "drag", "", 0, pos[1] + 2, pos[2] + 11)
+  vim.wait(30)
+  vim.rpcrequest(child, "nvim_input_mouse", "left", "release", "", 0, pos[1] + 2, pos[2] + 11)
+  wait_for(function() return mode() == "v" end, "press-drag selection")
+  vim.rpcrequest(child, "nvim_input", "y")
+  wait_for(function() return mode():match("^n") end, "yank selection")
+  assert_true(remote([[return vim.api.nvim_win_get_option(..., "scrolloff")]], win) == -1,
+    "drag release restores inherited scrolloff")
+  local actual = remote([[return vim.fn.getreg('"')]])
+  assert_true(actual == expected, "y copies precisely the dragged text: expected " .. vim.inspect(expected)
+    .. ", got " .. vim.inspect(actual))
+end
+
 local function assert_active(win)
   assert_true(remote([[return vim.wo[...].winhighlight:find("PiAgentActiveBorder", 1, true) ~= nil]], win),
     "clicked pane has the active border")
@@ -54,18 +88,46 @@ local ok, err = xpcall(function()
     vim.o.lines = 50
     vim.o.mouse = "a"
     vim.o.mousetime = 0
+    vim.o.scrolloff = tonumber(vim.env.PI_AGENT_TEST_SCROLLOFF) or 0
     vim.env.TERM_PROGRAM = nil
     vim.env.ITERM_SESSION_ID = nil
     vim.env.PI_CODING_AGENT_DIR = tmp
     vim.env.PI_CODING_AGENT_SESSION_DIR = tmp .. "/sessions"
     vim.opt.rtp:prepend(root)
     vim.keymap.set("t", "<LeftMouse>", "global-click")
+    vim.keymap.set("n", "<LeftMouse>", function()
+      _G.ordinary_clicks = (_G.ordinary_clicks or 0) + 1
+      return "<LeftMouse>"
+    end, { expr = true })
+    vim.keymap.set("n", "<ScrollWheelUp>", function()
+      _G.ordinary_scrolls = (_G.ordinary_scrolls or 0) + 1
+      return "<ScrollWheelUp>"
+    end, { expr = true })
     local pi = require("pi-agent")
     pi.setup({ command = fake, keymap = false, abort_keymap = false })
     pi.open()
   ]], root, tmp, fake)
   wait_for(function() return mode() == "t" end, "first terminal input")
   local first = current_win()
+  wait_for(function() return remote([[return vim.api.nvim_buf_line_count(0) >= 80]]) end, "history output")
+  local bottom = topline(first)
+  wheel(first, "up")
+  wait_for(function() return mode():match("^n") end, "wheel-up activates normal mode")
+  assert_true(topline(first) < bottom, "wheel-up scrolls history")
+  local above = topline(first)
+  wheel(first, "down")
+  assert_true(topline(first) > above, "wheel-down scrolls toward input")
+  for _ = 1, 40 do
+    if mode() == "t" then break end
+    wheel(first, "down")
+  end
+  wait_for(function() return mode() == "t" end, "wheel-down at bottom activates input")
+  bottom = topline(first)
+  wheel(first, "down")
+  assert_true(mode() == "t" and topline(first) == bottom, "wheel-down at input does not overscroll")
+  drag_and_yank(first)
+  click(first)
+  wait_for(function() return mode() == "t" end, "click after yank activates input")
   local base = remote([[for _, w in ipairs(vim.api.nvim_list_wins()) do
     if w ~= vim.api.nvim_get_current_win() then return w end
   end]])
@@ -79,6 +141,9 @@ local ok, err = xpcall(function()
   assert_true(remote([[return vim.fn.maparg("<LeftMouse>", "n", false, true).buffer]]) == 1,
     "normal click mapping is buffer-local")
 
+  wheel(first, "up")
+  wait_for(function() return current_win() == first and mode():match("^n") end, "wheel over inactive Pi focuses its scrollback")
+  drag_and_yank(first)
   click(first)
   wait_for(function() return current_win() == first and mode() == "t" end, "click focus with input active")
   assert_active(first)
@@ -107,16 +172,12 @@ local ok, err = xpcall(function()
   wait_for(function() return current_win() == first and mode() == "t" end, "normal-mode click focus")
   assert_active(first)
   click(first)
-  wait_for(function() return mode():match("^n") end, "same-pane click retains native behavior")
-  local pos = vim.rpcrequest(child, "nvim_win_get_position", first)
-  vim.rpcrequest(child, "nvim_input_mouse", "left", "press", "", 0, pos[1] + 2, pos[2] + 2)
-  vim.wait(30)
-  vim.rpcrequest(child, "nvim_input_mouse", "left", "drag", "", 0, pos[1] + 3, pos[2] + 8)
-  vim.wait(30)
-  vim.rpcrequest(child, "nvim_input_mouse", "left", "release", "", 0, pos[1] + 3, pos[2] + 8)
-  wait_for(function() return mode() == "v" end, "native same-pane drag selection")
-  vim.rpcrequest(child, "nvim_input", "<Esc>")
-  wait_for(function() return mode():match("^n") end, "leave selection")
+  wait_for(function() return mode() == "t" end, "same-pane click activates input")
+  drag_and_yank(first)
+  click(third)
+  wait_for(function() return mode() == "t" end, "input before cross-pane drag")
+  drag_and_yank(first)
+  assert_true(current_win() == first, "drag selects in the target Pi pane")
 
   vim.rpcrequest(child, "nvim_input", "i")
   wait_for(function() return mode() == "t" end, "input before ordinary-window click")
@@ -124,6 +185,36 @@ local ok, err = xpcall(function()
   wait_for(function() return current_win() == base end, "click ordinary window")
   assert_true(mode():match("^n"), "ordinary-window click does not start insert mode")
   assert_true(remote([[return vim.fn.maparg("<LeftMouse>", "t")]]) == "global-click", "global mapping is untouched")
+  click(base, 0, 0)
+  wheel(base, "up")
+  assert_true(remote([[return _G.ordinary_scrolls or 0]]) == 1, "ordinary wheel mapping is preserved")
+  assert_true(remote([[return _G.ordinary_clicks or 0]]) > 0, "ordinary click mapping is preserved")
+  wheel(first, "up")
+  wait_for(function() return current_win() == first and mode():match("^n") end,
+    "wheel from ordinary window focuses Pi scrollback")
+  for _ = 1, 40 do
+    if mode() == "t" then break end
+    wheel(first, "down")
+  end
+  wait_for(function() return mode() == "t" end, "wheel from ordinary window returns to Pi input")
+  click(base, 0, 0)
+  wait_for(function() return current_win() == base end, "ordinary window before drag")
+  vim.rpcrequest(child, "nvim_input", "i")
+  wait_for(function() return mode() == "i" end, "editor insert mode before drag")
+  drag_and_yank(first)
+  click(base, 0, 0)
+  wait_for(function() return current_win() == base end, "ordinary window before click")
+  vim.rpcrequest(child, "nvim_input", "i")
+  wait_for(function() return mode() == "i" end, "editor insert mode before wheel")
+  wheel(first, "up")
+  wait_for(function() return current_win() == first and mode():match("^n") end,
+    "wheel from editor insert mode focuses Pi scrollback")
+  click(base, 0, 0)
+  wait_for(function() return current_win() == base end, "ordinary window after wheel")
+  vim.rpcrequest(child, "nvim_input", "i")
+  wait_for(function() return mode() == "i" end, "editor insert mode before click")
+  click(first)
+  wait_for(function() return current_win() == first and mode() == "t" end, "click Pi from ordinary window activates input")
   remote([[require("pi-agent").open()]])
   wait_for(function() return mode() == "t" end, "reopen Pi input")
   click(second)
@@ -147,5 +238,5 @@ if not ok then
   print(err)
   os.exit(1)
 end
-print("Pi pane clicks preserve input mode and native normal-mode behavior.")
+print("Pi mouse clicks activate input, wheels browse and return to input, and drags yank text.")
 vim.cmd("qa!")
