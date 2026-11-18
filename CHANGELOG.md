@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Unseen completions have a `●` marker beside the Pi pane's conversation title.
+
+### Changed
+
+- Multi-session iTerm2 tabs show status counts such as `1 finished · 2 working`,
+  omitting idle sessions unless all are idle. Single-session labels stay simple.
+- Focusing a visible Pi pane in the active terminal tab acknowledges only that
+  pane's result. Hidden and background panes keep their unseen completions.
+- Needs input and errors take priority over unseen completions, which take
+  priority over ongoing work for iTerm2 tab colour and ordering.
+
 ## [0.3.0] - 2026-11-18
 
 ### Added

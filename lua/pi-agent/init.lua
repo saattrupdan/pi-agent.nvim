@@ -17,6 +17,7 @@ local state = {
   buffer_origins = {},
   buffer_focus_sync = false,
   iterm_status = nil,
+  iterm_text = nil,
   iterm_marker_at = nil,
   tab_active = true,
 }
@@ -1093,7 +1094,7 @@ local function window_config(rect, id, active)
   }
 
   -- Set title for all panes, not just the active one
-  config.title = session and session_title(session)
+  config.title = session and ((session.status == "finished" and "● " or "") .. session_title(session))
     or string.format("pi-agent %d", id)
 
   return config
@@ -1156,6 +1157,7 @@ end
 
 local render_layout
 local remove_session
+local refresh_session_status
 
 local function replace_leaf(node, target_id, replacement)
   if not node then
@@ -1322,6 +1324,7 @@ local function focus_session(id, start_insert)
   state.current_id = id
   state.focused_id = id
   vim.api.nvim_set_current_win(session.win)
+  refresh_session_status(session)
   follow_session_cwd(session)
   update_active_marker()
   if start_insert then
@@ -1765,16 +1768,29 @@ end
 -- layout event. Keep polling until the pane is closed.
 -- @param session The session object
 local function aggregate_status()
-  local statuses = {}
+  local counts, total = {}, 0
   for _, session in pairs(state.sessions) do
-    statuses[session.status] = true
+    counts[session.status] = (counts[session.status] or 0) + 1
+    total = total + 1
   end
-  for _, status in ipairs({ "need_input", "working", "error", "starting", "finished", "idle" }) do
-    if statuses[status] then
-      return status
+  local priority, labels = nil, {}
+  for _, status in ipairs({ "need_input", "error", "finished", "working", "starting", "idle" }) do
+    local count = counts[status]
+    if count then
+      priority = priority or status
+      if total == 1 then
+        return status, ITERM_STATUSES[status].text
+      end
+      if status ~= "idle" or count == total then
+        local label = status == "need_input" and "needs input" or ITERM_STATUSES[status].text:lower()
+        if status == "error" and count > 1 then
+          label = "errors"
+        end
+        table.insert(labels, string.format("%d %s", count, label))
+      end
     end
   end
-  return nil
+  return priority, total > 0 and table.concat(labels, " · ") or nil
 end
 
 local function publish_iterm_status()
@@ -1783,9 +1799,9 @@ local function publish_iterm_status()
     or #vim.api.nvim_list_uis() == 0 then
     return
   end
-  local status = aggregate_status()
+  local status, text = aggregate_status()
   local now = os.time()
-  local changed = status ~= state.iterm_status
+  local changed = status ~= state.iterm_status or text ~= state.iterm_text
   local refresh_marker = status and (
     not state.iterm_marker_at or now - state.iterm_marker_at >= ITERM_MARKER_INTERVAL
   )
@@ -1794,7 +1810,7 @@ local function publish_iterm_status()
   end
   local value = ITERM_STATUSES[status]
   local payload = changed and (value and string.format(
-    "status=%s;indicator=%s;status-color=%s", value.text, value.color, value.color
+    "status=%s;indicator=%s;status-color=%s", text, value.color, value.color
   ) or "status=;indicator=;status-color=") or nil
   local marker_value = status and string.format("%s:%d", status, now + ITERM_MARKER_LIFETIME) or ""
   local encoded_marker = status and vim.fn.system({ "base64" }, marker_value):gsub("%s+", "") or ""
@@ -1816,11 +1832,18 @@ local function publish_iterm_status()
   end
   if ok then
     state.iterm_status = status
+    state.iterm_text = text
     state.iterm_marker_at = status and now or nil
   end
 end
 
-local function refresh_session_status(session)
+local function session_is_focused(session)
+  return state.tab_active and state.visible and not state.suppress_focus_events
+    and is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win
+    and vim.api.nvim_win_get_buf(session.win) == session.buf
+end
+
+refresh_session_status = function(session)
   if not session.job then
     return
   end
@@ -1835,14 +1858,18 @@ local function refresh_session_status(session)
     status, completion = raw:match("^([a-z_]+):?(%d*)%s*$")
   end
   if status == "finished" then
-    if completion == "" or (completion == session.last_completion and session.status ~= "working") then
+    if completion == "" or (completion == session.last_completion
+      and session.status ~= "working" and session.status ~= "finished") then
       return
     end
     session.last_completion = completion
-    status = state.tab_active and "idle" or "finished"
+    status = session_is_focused(session) and "idle" or "finished"
   end
   if ITERM_STATUSES[status] and session.status ~= status then
     session.status = status
+    if state.visible then
+      update_active_marker()
+    end
     publish_iterm_status()
   end
 end
@@ -2245,13 +2272,8 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("FocusGained", {
     group = group,
     callback = function()
-      each_session(refresh_session_status)
       state.tab_active = true
-      each_session(function(session)
-        if session.status == "finished" then
-          session.status = "idle"
-        end
-      end)
+      each_session(refresh_session_status)
       publish_iterm_status()
     end,
   })
@@ -2277,6 +2299,7 @@ function M.setup(opts)
         if session and is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win then
           state.current_id = id
           state.focused_id = id
+          refresh_session_status(session)
           update_active_marker()
         end
       end
