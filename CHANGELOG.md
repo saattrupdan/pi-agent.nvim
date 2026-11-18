@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Pi now fills the editor above the command line by default, keeping the full
+  border and session title visible. Explicit width and height settings still apply.
 - Mouse-wheel scrolling back to the latest Pi output now returns to terminal
   mode automatically, so the prompt is ready for input.
 - New Pi panes start Idle without a dot. Only a response completed while its

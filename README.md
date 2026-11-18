@@ -6,7 +6,8 @@ A tiny Neovim plugin that opens your [Pi](https://github.com/) agent in a center
 
 ## Features
 
-- Floating Pi area, 90% × 90% of the editor by default, that recenters and resizes with Neovim
+- Full-size floating Pi area above Neovim's command line, with a visible border
+  and session title; resizes with Neovim
 - Automatically launches Pi from the original checkout's git root (falling back to `cwd` outside Git), even after following managed worktrees
 - Follows the focused session's validated Git worktree in Neovim's global cwd, including delayed session metadata and resume/title changes
 - Multiple Pi terminal sessions in tiled floating panes
@@ -52,8 +53,8 @@ The defaults:
 ```lua
 require("pi-agent").setup({
   command = "pi",      -- command to run in the floating terminal
-  width   = 0.9,       -- fraction of editor width
-  height  = 0.9,       -- fraction of editor height
+  width   = 1.0,       -- fraction of editor width, including the border
+  height  = 1.0,       -- fraction of height above the command line, including the border
   border  = "rounded", -- any value accepted by nvim_open_win
   pane_gap = 1,         -- empty cells between split panes (0 disables)
   keymap  = "<C-,>",   -- toggle keymap (string or table of strings; set to false or "" to disable)

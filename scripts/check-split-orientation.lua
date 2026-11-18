@@ -104,6 +104,36 @@ local function wait_for_windows(count)
 end
 
 local function run()
+  vim.o.cmdheight = 1
+  pi.setup({ command = "cat", keymap = false, abort_keymap = false })
+  pi.open()
+  wait_for_windows(1)
+
+  for _, size in ipairs({ { 200, 80, 1 }, { 120, 40, 2 } }) do
+    vim.o.columns, vim.o.lines, vim.o.cmdheight = size[1], size[2], size[3]
+    vim.api.nvim_exec_autocmds("VimResized", {})
+    local win = pi_windows()[1]
+    local frame = frame_geometry(win, 1, 1, 1, 1)
+    assert_eq(frame.left, 0, "default frame left edge")
+    assert_eq(frame.top, 0, "default frame top edge")
+    assert_eq(frame.right, vim.o.columns, "default frame right edge")
+    assert_eq(frame.bottom, vim.o.lines - vim.o.cmdheight, "default frame bottom edge")
+
+    local config = vim.api.nvim_win_get_config(win.win)
+    assert_eq(#config.border, 8, "default border has all eight parts")
+    for _, part in ipairs(config.border) do
+      local char = type(part) == "table" and part[1] or part
+      assert_eq(char ~= "", true, "default border part remains visible")
+    end
+    assert_eq(config.title[1][1], "pi-agent 1", "default session title")
+    assert_eq(config.title_pos, "center", "default session title position")
+    assert_eq(vim.wo[win.win].winhighlight,
+      "FloatBorder:PiAgentActiveBorder,FloatTitle:PiAgentActiveTitle",
+      "default border and title highlights")
+  end
+
+  pi.close()
+  vim.o.columns, vim.o.lines, vim.o.cmdheight = 200, 80, 1
   pi.setup({
     command = "cat",
     width = 0.8,

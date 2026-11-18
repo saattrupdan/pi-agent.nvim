@@ -23,8 +23,8 @@ local state = {
 
 local defaults = {
   command = "pi",
-  width = 0.9,
-  height = 0.9,
+  width = 1.0,
+  height = 1.0,
   border = "rounded",
   pane_gap = 1,
   keymap = "<C-,>",

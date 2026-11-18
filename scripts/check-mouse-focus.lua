@@ -104,7 +104,8 @@ local ok, err = xpcall(function()
       return "<ScrollWheelUp>"
     end, { expr = true })
     local pi = require("pi-agent")
-    pi.setup({ command = fake, keymap = false, abort_keymap = false })
+    -- Leave the editor exposed for ordinary-window mouse routing checks.
+    pi.setup({ command = fake, width = 0.9, height = 0.9, keymap = false, abort_keymap = false })
     pi.open()
   ]], root, tmp, fake)
   wait_for(function() return mode() == "t" end, "first terminal input")
